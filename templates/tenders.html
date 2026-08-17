@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="topbar">
+  <div class="tb-head">
+    <button class="back-btn" type="button" onclick="history.back()" aria-label="Назад"><svg class="icon"><use href="#i-arrow-left"/></svg></button>
+    <div><h1>{{ title }}</h1><div class="sub">{{ total_found }} тендеров{% if q %} · поиск «{{ q }}»{% endif %}</div></div>
+  </div>
+  <div class="topbar-right">
+    <div class="search"><form method="get" action="{{ url_for('tenders') }}"><button type="submit" class="search-btn" aria-label="Искать"><svg class="icon"><use href="#i-search"/></svg></button><input name="q" value="{{ q }}" placeholder="Поиск / компания..."></form></div>
+    {% include "_notif.html" %}
+  </div>
+</div>
+
+<div class="filter-bar">
+  <form method="get" action="{{ url_for('tenders') }}">
+    <input type="hidden" name="q" value="{{ q }}">
+    <select class="chip-select" name="sort" aria-label="Сортировка" onchange="this.form.submit()">
+      <option value="deadline" {{ 'selected' if sort=='deadline' }}>Сортировка: по сроку</option>
+      <option value="score" {{ 'selected' if sort=='score' }}>по соответствию</option>
+      <option value="company" {{ 'selected' if sort=='company' }}>по компании (А-Я)</option>
+      <option value="price" {{ 'selected' if sort=='price' }}>по стоимости</option>
+    </select>
+    <select class="chip-select" name="direction" aria-label="Тип закупки" onchange="this.form.submit()">
+      <option value="">Тип: все</option>
+      {% for k in type_keys %}<option value="{{ k }}" {{ 'selected' if direction==k }}>{{ dir_name(k) }}</option>{% endfor %}
+    </select>
+    <select class="chip-select" name="ptype" aria-label="Коммерческая или государственная" onchange="this.form.submit()">
+      <option value="">Все закупки</option>
+      <option value="com" {{ 'selected' if ptype=='com' }}>Коммерческие</option>
+      <option value="gov" {{ 'selected' if ptype=='gov' }}>Государственные</option>
+    </select>
+    <select class="chip-select" name="match" aria-label="Соответствие" onchange="this.form.submit()">
+      <option value="">Соответствие: любое</option>
+      <option value="high" {{ 'selected' if match=='high' }}>Наиболее подходящее</option>
+      <option value="mid" {{ 'selected' if match=='mid' }}>Подходящее</option>
+    </select>
+  </form>
+</div>
+
+{% if tenders %}
+<div class="tlist">
+  {% for t in tenders %}{% include "_tender_row.html" %}{% endfor %}
+</div>
+{% if total_pages > 1 %}
+<div class="win-row" style="margin-top:24px;justify-content:center">
+  {% if page > 1 %}<a class="win-chip" href="{{ url_for('tenders', direction=direction, ptype=ptype, q=q, match=match, sort=sort, page=page-1) }}">← Назад</a>{% endif %}
+  <span class="win-chip on">Стр. {{ page }} из {{ total_pages }}</span>
+  {% if page < total_pages %}<a class="win-chip" href="{{ url_for('tenders', direction=direction, ptype=ptype, q=q, match=match, sort=sort, page=page+1) }}">Вперёд →</a>{% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="empty">Ничего не найдено по выбранным фильтрам.</div>
+{% endif %}
+{% endblock %}

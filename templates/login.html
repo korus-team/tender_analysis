@@ -1,0 +1,11 @@
+{% extends "base_auth.html" %}
+{% block auth %}
+<h1>Вход</h1>
+<div class="sub">Войдите, чтобы продолжить работу с тендерами</div>
+<form method="post" action="{{ url_for('login') }}">
+  <div class="auth-field"><label>Логин</label><input name="username" autocomplete="username" required autofocus></div>
+  <div class="auth-field"><label>Пароль</label><input type="password" name="password" autocomplete="current-password" required></div>
+  <button class="auth-btn" type="submit">Войти</button>
+</form>
+<div class="auth-alt">Впервые здесь? <a href="{{ url_for('register') }}">Зарегистрироваться</a></div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="topbar">
+  <div class="tb-head">
+    <button class="back-btn" type="button" onclick="history.back()" aria-label="Назад"><svg class="icon"><use href="#i-arrow-left"/></svg></button>
+    <div><h1>Профиль компании</h1><div class="sub">Что считать «нашим» тендером</div></div>
+  </div>
+</div>
+
+<div class="subtabs">
+  <a class="subtab {{ 'on' if subtab=='profile' }}" href="{{ url_for('profile') }}">Профиль</a>
+  <a class="subtab {{ 'on' if subtab=='employees' }}" href="{{ url_for('employees') }}">Сотрудники</a>
+</div>
+
+<form method="post" action="{{ url_for('profile') }}">
+<div class="form-grid">
+
+  <div class="form-card">
+    <h3>Главный критерий</h3>
+    <div class="hint">Рассматриваем только закупки компаний-заказчиков с оборотом не ниже этого порога. Это основной и обязательный фильтр — остальное вторично.</div>
+    <div class="field"><label>Минимальный оборот компании-заказчика</label><input type="text" value="{{ min_revenue_h }}" disabled></div>
+  </div>
+
+  <div class="form-card">
+    <h3>Профиль и компетенции</h3>
+    <div class="hint">Чем занимается отдел — в свободной форме. Помогает понимать, какие закупки нам подходят.</div>
+    <div class="field"><label>Название профиля</label><input type="text" name="name" value="{{ name }}" placeholder="Например: департамент аналитических решений"></div>
+    <div class="field"><label>Компетенции</label><textarea name="competencies" placeholder="Например: хранилища данных, BI и дашборды, поставка лицензий, аналитика и ML...">{{ competencies }}</textarea></div>
+  </div>
+
+  <div class="form-card">
+    <h3>Типы закупок в фокусе</h3>
+    <div class="hint">Закупки этих типов считаются профильными и попадают в подборку. Всё, что не относится к профилю компании, не рассматривается.</div>
+    <div class="ttags">{% for k, nm in types %}<span class="ttag ttag-{{ 'license' if k=='license' else 'type' }}">{{ nm }}</span>{% endfor %}</div>
+  </div>
+
+  <div class="form-card">
+    <h3>Ключевые темы <span style="font-weight:400;color:var(--text-3)">(вспомогательно)</span></h3>
+    <div class="hint">По одной в строке. Пока используются как подсказка при оценке — позже их заменит ИИ.</div>
+    <div class="field"><textarea name="keywords_any">{{ keywords_any }}</textarea></div>
+    <div class="field"><label>Стоп-слова</label><textarea name="stop_words">{{ stop_words }}</textarea></div>
+  </div>
+
+  <div class="save-bar">
+    <button class="btn-primary" type="submit">Сохранить профиль</button>
+    <span style="color:var(--text-2);font-size:14px">После сохранения баллы пересчитаются.</span>
+  </div>
+</div>
+</form>
+{% endblock %}

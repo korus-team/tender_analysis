@@ -1,0 +1,97 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="topbar">
+  <div><h1>Состояние на {{ now }}</h1></div>
+  <div class="topbar-right">
+    <form method="post" action="{{ url_for('ingest') }}"><button class="btn-collect" type="submit"><svg class="icon"><use href="#i-search"/></svg>Собрать тендеры</button></form>
+    {% include "_notif.html" %}
+  </div>
+</div>
+
+<div class="stat-grid cols-4">
+  <div class="pstat p1"><div class="plabel">Найдено новых тендеров</div><div class="pnum">{{ stat_total }}</div><div class="pdelta">актуальных сейчас</div></div>
+  <div class="pstat p2"><div class="plabel">Наиболее подходящих</div><div class="pnum">{{ stat_top }}</div><div class="pdelta">высокое соответствие</div></div>
+  <div class="pstat p3"><div class="plabel">Лицензионные запросы</div><div class="pnum">{{ stat_lic }}</div><div class="pdelta">маржинальные</div></div>
+  <div class="pstat p4"><div class="plabel">Приоритетные компании</div><div class="pnum">{{ prio_companies }}</div><div class="pdelta">в списке</div></div>
+</div>
+
+<form method="get" action="{{ url_for('home') }}" id="searchForm">
+  <div class="search-row">
+    <label class="search-box"><svg class="icon"><use href="#i-search"/></svg><input name="q" value="{{ q }}" placeholder="Поиск по ключевым словам, номеру или заказчику..."></label>
+    <button class="btn-filter" type="button" id="filtBtn"><svg class="icon"><use href="#i-filter"/></svg>Фильтры</button>
+  </div>
+  <div class="filters-panel" id="filtPanel" style="display:{{ 'flex' if (direction or ptype) else 'none' }}">
+    <select class="chip-select" name="direction" onchange="document.getElementById('searchForm').submit()">
+      <option value="">Тип закупки: все</option>
+      {% for k in type_keys %}<option value="{{ k }}" {{ 'selected' if direction==k }}>{{ dir_name(k) }}</option>{% endfor %}
+    </select>
+    <select class="chip-select" name="ptype" onchange="document.getElementById('searchForm').submit()">
+      <option value="">Коммерческие и государственные</option>
+      <option value="com" {{ 'selected' if ptype=='com' }}>Только коммерческие</option>
+      <option value="gov" {{ 'selected' if ptype=='gov' }}>Только государственные</option>
+    </select>
+    <button class="btn-filter" type="submit">Применить</button>
+  </div>
+  <div class="sort-row">
+    <div class="sort-unit">Сортировать:
+      <select class="chip-select" name="sort" onchange="document.getElementById('searchForm').submit()">
+        <option value="ai" {{ 'selected' if sort=='ai' }}>Рекомендации ИИ</option>
+        <option value="deadline" {{ 'selected' if sort=='deadline' }}>По сроку подачи</option>
+        <option value="price" {{ 'selected' if sort=='price' }}>По стоимости</option>
+        <option value="company" {{ 'selected' if sort=='company' }}>По компании</option>
+      </select>
+    </div>
+    <div class="sort-unit">Показать:
+      <select class="chip-select" name="show" onchange="document.getElementById('searchForm').submit()">
+        <option value="all" {{ 'selected' if show=='all' }}>Все тендеры</option>
+        <option value="priority" {{ 'selected' if show=='priority' }}>Приоритетные компании</option>
+        <option value="license" {{ 'selected' if show=='license' }}>Лицензионные</option>
+        <option value="gov" {{ 'selected' if show=='gov' }}>Государственные</option>
+        <option value="com" {{ 'selected' if show=='com' }}>Коммерческие</option>
+      </select>
+    </div>
+  </div>
+</form>
+
+{% if tenders %}
+{% for t in tenders %}
+<div class="tcard">
+  <div class="tcard-main">
+    <div class="ttags">
+      {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
+      {% if t.ptype=='gov' %}<span class="ttag ttag-gov2">Государственный</span>{% elif t.ptype=='com' %}<span class="ttag ttag-com2">Коммерческий</span>{% endif %}
+      {% if t.is_license %}<span class="ttag ttag-license2">Лицензионный</span>{% endif %}
+    </div>
+    <div class="tcard-title"><a href="{{ url_for('tender', tender_id=t.tender_id, ret=request.full_path) }}">{{ t.title }}</a></div>
+    <div class="tcard-sub">{{ t.customer or 'Заказчик скрыт площадкой' }}</div>
+    <div class="ttags" style="margin-top:9px">
+      {% if (t.score or 0) >= 85 %}<span class="ttag ttag-match">Наиболее подходящее</span>{% endif %}
+      {% if t.law %}<span class="ttag ttag-law">{{ t.law }}</span>{% endif %}
+    </div>
+  </div>
+  <div class="tcard-right">
+    <div class="tcard-price">{{ t.price_fmt }}</div>
+    <div class="tcard-deadline">Подача заявок<br><b>до {{ t.deadline_fmt }}</b></div>
+    {% if t.warn %}<div class="tcard-warn">{{ t.warn }}</div>{% elif t.deadline_soon %}<div class="tcard-warn">Осталось {{ t.days_fmt }}</div>{% endif %}
+  </div>
+  <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
+    <button class="tcard-heart {{ 'on' if t.tender_id in my_fav_ids }}" type="submit" aria-label="В избранное"><svg class="icon"><use href="#i-heart"/></svg></button>
+  </form>
+</div>
+{% endfor %}
+{% if total_pages > 1 %}
+<div class="win-row" style="margin-top:20px;justify-content:center">
+  {% if page > 1 %}<a class="win-chip" href="{{ url_for('home', q=q, direction=direction, ptype=ptype, sort=sort, show=show, page=page-1) }}">← Назад</a>{% endif %}
+  <span class="win-chip on">Стр. {{ page }} из {{ total_pages }}</span>
+  {% if page < total_pages %}<a class="win-chip" href="{{ url_for('home', q=q, direction=direction, ptype=ptype, sort=sort, show=show, page=page+1) }}">Вперёд →</a>{% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="empty">Ничего не найдено. Нажмите «Собрать тендеры» или измените фильтры.</div>
+{% endif %}
+
+<script>
+  var fb=document.getElementById('filtBtn'), fp=document.getElementById('filtPanel');
+  if(fb&&fp){fb.addEventListener('click',function(){fp.style.display=(fp.style.display==='none'?'flex':'none');});}
+</script>
+{% endblock %}

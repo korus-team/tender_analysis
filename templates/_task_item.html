@@ -1,0 +1,20 @@
+<div class="task-item {{ 'done' if t.done }}">
+  <div class="task-check">
+    <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+      <button type="submit" aria-label="Отметить выполненной"><svg class="icon"><use href="#i-check"/></svg></button>
+    </form>
+  </div>
+  <div class="task-body">
+    <div class="task-title">{{ t.title }}</div>
+    <div class="task-sub">
+      <span class="prio {{ t.priority }}">{{ t.prio_label }}</span>
+      {% if t.due_fmt and t.due_fmt != '—' %}<span class="task-due"><span class="urg {{ t.due_urg }}"></span>до {{ t.due_fmt }}</span>{% endif %}
+      {% if t.tender_id %}<a class="task-link" href="{{ url_for('tender', tender_id=t.tender_id, ret=request.full_path) }}"><svg class="icon" style="width:14px;height:14px"><use href="#i-arrow-right"/></svg>{{ t.tender_title or 'открыть тендер' }}</a>{% endif %}
+    </div>
+  </div>
+  <div class="task-del">
+    <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" onsubmit="return confirm('Удалить задачу?')">
+      <button type="submit" aria-label="Удалить">×</button>
+    </form>
+  </div>
+</div>

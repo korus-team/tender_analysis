@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="topbar">
+  <div class="tb-head">
+    <button class="back-btn" type="button" onclick="history.back()" aria-label="Назад"><svg class="icon"><use href="#i-arrow-left"/></svg></button>
+    <div><h1>Тендеры по направлениям</h1><div class="sub">Направления департамента DAR</div></div>
+  </div>
+  <div class="topbar-right">
+    <div class="search"><form method="get" action="{{ url_for('tenders') }}"><button type="submit" class="search-btn" aria-label="Искать"><svg class="icon"><use href="#i-search"/></svg></button><input name="q" placeholder="Поиск тендеров..."></form></div>
+    {% include "_notif.html" %}
+  </div>
+</div>
+
+{% if directions %}
+<div class="dept-list">
+  {% for d in directions %}
+  <a class="dept-row" href="{{ url_for('tenders', direction=d.key) }}" style="text-decoration:none;color:inherit">
+    <div class="dept-ic"><svg class="icon"><use href="#{{ d.icon }}"/></svg></div>
+    <div class="dept-name">{{ d.name }}</div>
+    <div class="dept-stat"><div class="n">{{ d.total }}</div><div class="t">тендеров</div></div>
+    <div class="dept-div"></div>
+    <div class="dept-stat"><div class="n g">{{ d.top }}</div><div class="t">наиболее подходящих</div></div>
+    <div class="chev"><svg class="icon"><use href="#i-chev-right"/></svg></div>
+  </a>
+  {% endfor %}
+</div>
+{% else %}
+<div class="empty">Пока нет подходящих тендеров. Нажми «Собрать тендеры» на Главной.</div>
+{% endif %}
+{% endblock %}

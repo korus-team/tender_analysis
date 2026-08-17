@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="topbar">
+  <div><h1>Нерелевантные тендеры</h1></div>
+  <div class="topbar-right">
+    <div class="search"><form method="get" action="{{ url_for('irrelevant') }}"><button type="submit" class="search-btn" aria-label="Искать"><svg class="icon"><use href="#i-search"/></svg></button><input name="q" value="{{ q }}" placeholder="Поиск тендеров..."></form></div>
+    {% include "_notif.html" %}
+  </div>
+</div>
+<div class="qa-note">Что система сочла не нашим профилем и отмеченные «не пошли» · {{ total_found }} шт. Ошибки можно поправить — это улучшит подбор.</div>
+
+{% if tenders %}
+{% for t in tenders %}
+<div class="tcard">
+  <div class="tcard-main">
+    <div class="ttags">
+      {% if t.ptype=='gov' %}<span class="ttag ttag-gov2">Государственный</span>{% elif t.ptype=='com' %}<span class="ttag ttag-com2">Коммерческий</span>{% endif %}
+      {% if t.is_license %}<span class="ttag ttag-license2">Лицензионный</span>{% endif %}
+      {% if t.np %}<span class="ttag ttag-np">Не пошли</span>{% endif %}
+    </div>
+    <div class="tcard-title"><a href="{{ url_for('tender', tender_id=t.tender_id, ret='/irrelevant') }}">{{ t.title }}</a></div>
+    <div class="tcard-sub">{{ t.customer or 'Заказчик скрыт площадкой' }}</div>
+  </div>
+  <div class="tcard-right">
+    <div class="tcard-price">{{ t.price_fmt }}</div>
+    <div class="tcard-deadline">Подача заявок<br><b>до {{ t.deadline_fmt }}</b></div>
+  </div>
+  {% if t.np %}
+  <form method="post" action="{{ url_for('toggle_not_pursued', tender_id=t.tender_id) }}"><button class="btn-sm" type="submit">Вернуть в работу</button></form>
+  {% else %}
+  <form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}"><input type="hidden" name="value" value="relevant"><button class="btn-sm teal" type="submit">Это наш профиль</button></form>
+  {% endif %}
+</div>
+{% endfor %}
+{% if total_pages > 1 %}
+<div class="win-row" style="margin-top:20px;justify-content:center">
+  {% if page > 1 %}<a class="win-chip" href="{{ url_for('irrelevant', q=q, page=page-1) }}">← Назад</a>{% endif %}
+  <span class="win-chip on">Стр. {{ page }} из {{ total_pages }}</span>
+  {% if page < total_pages %}<a class="win-chip" href="{{ url_for('irrelevant', q=q, page=page+1) }}">Вперёд →</a>{% endif %}
+</div>
+{% endif %}
+{% else %}
+<div class="empty">Нерелевантных тендеров нет.</div>
+{% endif %}
+{% endblock %}

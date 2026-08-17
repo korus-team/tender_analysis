@@ -1,0 +1,57 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="topbar">
+  <div class="tb-head"><div><h1>Избранное</h1><div class="sub">Сохранённые тендеры для быстрого поиска</div></div></div>
+  <div class="topbar-right">
+    <div class="search"><form method="get" action="{{ url_for('home') }}"><button type="submit" class="search-btn" aria-label="Искать"><svg class="icon"><use href="#i-search"/></svg></button><input name="q" placeholder="Поиск тендеров..."></form></div>
+    {% include "_notif.html" %}
+  </div>
+</div>
+
+<div class="filters-panel" style="margin-bottom:20px">
+  <form method="get" action="{{ url_for('favorites') }}" id="favFilters" style="display:flex;gap:12px;flex-wrap:wrap">
+    <select class="chip-select" name="metka" onchange="document.getElementById('favFilters').submit()">
+      <option value="">Метка: все сотрудники</option>
+      {% for e in employees %}<option value="{{ e }}" {{ 'selected' if metka==e }}>{{ e }}</option>{% endfor %}
+    </select>
+    <select class="chip-select" name="stage" onchange="document.getElementById('favFilters').submit()">
+      <option value="">Этап: все</option>
+      {% for k, lbl in stage_labels.items() %}<option value="{{ k }}" {{ 'selected' if stage_f==k }}>{{ lbl }}</option>{% endfor %}
+    </select>
+  </form>
+</div>
+
+{% if tenders %}
+{% for t in tenders %}
+<div class="tcard">
+  <div class="tcard-main">
+    <div class="ttags">
+      {% if t.stage %}<span class="ttag ttag-{{ t.stage }}">{{ t.stage_label }}</span>{% endif %}
+      {% for s in t.savers %}<span class="ttag ttag-metka">{{ s }}</span>{% endfor %}
+      {% if t.expired %}<span class="ttag ttag-expired">Срок подачи прошёл</span>{% endif %}
+    </div>
+    <div class="tcard-title"><a href="{{ url_for('tender', tender_id=t.tender_id, ret='/favorites') }}">{{ t.title }}</a></div>
+    <div class="tcard-sub">{{ t.customer or 'Заказчик скрыт площадкой' }}</div>
+    <div class="ttags" style="margin-top:9px">
+      {% if (t.score or 0) >= 85 %}<span class="ttag ttag-match">Наиболее подходящее</span>{% endif %}
+      <form method="post" action="{{ url_for('set_stage', tender_id=t.tender_id) }}">
+        <select class="stage-select" name="value" onchange="this.form.submit()">
+          <option value="">Задать этап…</option>
+          {% for k, lbl in stage_labels.items() %}<option value="{{ k }}" {{ 'selected' if t.stage==k }}>{{ lbl }}</option>{% endfor %}
+        </select>
+      </form>
+    </div>
+  </div>
+  <div class="tcard-right">
+    <div class="tcard-price">{{ t.price_fmt }}</div>
+    <div class="tcard-deadline">{% if t.expired %}Размещение завершено{% else %}Подача заявок<br><b>до {{ t.deadline_fmt }}</b>{% endif %}</div>
+  </div>
+  <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
+    <button class="tcard-heart on" type="submit" aria-label="Убрать из избранного"><svg class="icon"><use href="#i-heart"/></svg></button>
+  </form>
+</div>
+{% endfor %}
+{% else %}
+<div class="empty">В избранном пока пусто. Нажимайте сердечко у нужных тендеров в «Поиске».</div>
+{% endif %}
+{% endblock %}

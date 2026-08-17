@@ -1,0 +1,23 @@
+# Виртуальное окружение
+venv/
+.venv/
+env/
+
+# Кэш Python
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Служебные файлы PyCharm
+.idea/
+
+# Локальная база и выгрузки (не нужны в репозитории)
+*.db
+*.sqlite
+*.sqlite3
+tenders.db
+*.json.bak
+
+# Логи и временное
+*.log
+.DS_Store

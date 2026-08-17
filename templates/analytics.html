@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="topbar">
+  <div><h1>Аналитика</h1></div>
+  <div class="topbar-right">
+    <select class="chip-select"><option>За 30 дней</option><option>За 7 дней</option><option>За всё время</option></select>
+    {% include "_notif.html" %}
+  </div>
+</div>
+
+<div class="stat-grid cols-4">
+  {% for c in cards %}
+  <div class="pstat {{ c.cls }}"><div class="plabel">{{ c.label }}</div><div class="pnum">{{ c.value }}</div></div>
+  {% endfor %}
+</div>
+
+<div class="an-card">
+  <div class="donut-wrap">
+    <svg viewBox="0 0 210 210">
+      <circle cx="105" cy="105" r="80" fill="none" stroke="#EFF1F4" stroke-width="26"/>
+      <g transform="rotate(-90 105 105)">
+      {% for s in segs %}<circle cx="105" cy="105" r="80" fill="none" stroke="{{ s.color }}" stroke-width="26" stroke-dasharray="{{ s.dash }}" stroke-dashoffset="{{ s.offset }}"/>{% endfor %}
+      </g>
+    </svg>
+    <div class="donut-center"><b>{{ donut_total }}</b><span>тендеров</span></div>
+  </div>
+  <div class="legend">
+    {% for l in legend %}<div class="legend-item"><span class="dot" style="background:{{ l.color }}"></span>{{ l.name }}{% if l.count %} · {{ l.count }}{% endif %}</div>{% endfor %}
+    {% if donut_total == 0 %}<div style="color:var(--text-2)">Пока нет данных по типам</div>{% endif %}
+  </div>
+  <div class="an-insert">
+    <div class="ai-num">{{ irr_passed }} из {{ irr_total }}</div>
+    <div class="ai-txt">нерелевантных тендеров было передано дальше</div>
+  </div>
+</div>
+
+<style>
+.an-card{display:grid;grid-template-columns:auto 1fr 240px;gap:28px;align-items:center;background:#fff;border:1.5px solid var(--border-2);border-radius:18px;padding:26px 30px}
+.an-insert{border:2.5px solid #EE9A4E;border-radius:16px;padding:22px;text-align:left}
+.ai-num{font-size:30px;font-weight:800;letter-spacing:-.02em}
+.ai-txt{color:var(--text-2);font-size:14px;margin-top:8px;line-height:1.4}
+@media (max-width:1000px){.an-card{grid-template-columns:1fr}.donut-wrap{margin:0 auto}}
+</style>
+{% endblock %}

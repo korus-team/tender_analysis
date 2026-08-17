@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="topbar"><div><h1>Настройки</h1></div><div class="topbar-right">{% include "_notif.html" %}</div></div>
+
+<form method="post" action="{{ url_for('settings') }}">
+<div class="set-wrap">
+  <div>
+    {% set groups = [
+      ('Уведомления о новых наиболее подходящих закупках','n_new_email','n_new_site'),
+      ('Уведомления об изменении в избранном тендере','n_fav_email','n_fav_site'),
+      ('Напоминания по избранным тендерам','n_remind_email','n_remind_site')] %}
+    {% for title, ke, ks in groups %}
+    <div class="set-group">
+      <h4>{{ title }}</h4>
+      <label class="toggle-row"><span class="toggle"><input type="checkbox" name="{{ ke }}" {{ 'checked' if s[ke]=='1' }}><span class="tr"></span></span><span>На почту</span></label>
+      <label class="toggle-row"><span class="toggle"><input type="checkbox" name="{{ ks }}" {{ 'checked' if s[ks]=='1' }}><span class="tr"></span></span><span>На сайте</span></label>
+    </div>
+    {% endfor %}
+    <button class="btn-take" type="submit" style="margin-top:6px">Сохранить настройки</button>
+  </div>
+
+  <div class="set-panel">
+    <div class="field"><label>Часовой пояс</label>
+      <select name="timezone">
+        {% for tz in ['Московское время UTC +3','Калининград UTC +2','Самара UTC +4','Екатеринбург UTC +5','Новосибирск UTC +7','Владивосток UTC +10'] %}
+        <option {{ 'selected' if s.timezone==tz }}>{{ tz }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="field"><label>Частота проверки тендеров</label>
+      <div class="set-2col">
+        <select name="check_freq" id="checkFreq" onchange="toggleWins()">
+          <option value="1" {{ 'selected' if s.check_freq=='1' }}>1 раз в день</option>
+          <option value="3" {{ 'selected' if s.check_freq=='3' }}>3 раза в день</option>
+        </select>
+        <div class="win-stack">
+          <select name="check_win1">{% for w in windows %}<option {{ 'selected' if s.check_win1==w }}>{{ w }}</option>{% endfor %}</select>
+          <select name="check_win2" class="win23">{% for w in windows %}<option {{ 'selected' if s.check_win2==w }}>{{ w }}</option>{% endfor %}</select>
+          <select name="check_win3" class="win23">{% for w in windows %}<option {{ 'selected' if s.check_win3==w }}>{{ w }}</option>{% endfor %}</select>
+        </div>
+      </div>
+    </div>
+    <div class="field"><label>Частота уведомления</label>
+      <div class="set-2col">
+        <select name="notify_freq"><option value="1" {{ 'selected' if s.notify_freq=='1' }}>1 раз в день</option><option value="2" {{ 'selected' if s.notify_freq=='2' }}>2 раза в день</option></select>
+        <select name="notify_win">{% for w in windows %}<option {{ 'selected' if s.notify_win==w }}>{{ w }}</option>{% endfor %}</select>
+      </div>
+    </div>
+    <div class="field"><label>Электронная почта</label>
+      <div class="email-wrap"><input name="email" id="emailInp" value="{{ s.email }}" placeholder="name@korusconsulting.ru"><button type="button" class="email-x" onclick="document.getElementById('emailInp').value=''" aria-label="Очистить"><svg class="icon"><use href="#i-close"/></svg></button></div>
+    </div>
+    <div class="hint">Сама отправка на почту и работа по расписанию включатся после подключения почты (SMTP) и постоянного сервера.</div>
+  </div>
+</div>
+</form>
+
+<script>
+function toggleWins(){var f=document.getElementById('checkFreq').value;document.querySelectorAll('.win23').forEach(function(el){el.style.display=(f==='3'?'block':'none');});}
+toggleWins();
+</script>
+{% endblock %}

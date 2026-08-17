@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="topbar">
+  <div class="tb-head">
+    <button class="back-btn" type="button" onclick="history.back()" aria-label="Назад"><svg class="icon"><use href="#i-arrow-left"/></svg></button>
+    <div><h1>Задачи</h1><div class="sub">{{ active_tasks|length }} активных · {{ done_tasks|length }} выполнено</div></div>
+  </div>
+</div>
+
+<div class="task-add">
+  <form method="post" action="{{ url_for('task_add') }}">
+    <div class="f grow">
+      <label>Что нужно сделать</label>
+      <input type="text" name="title" value="{{ prefill_title }}" placeholder="Например: подготовить заявку и собрать документы" required>
+    </div>
+    <div class="f">
+      <label>Тендер (необязательно)</label>
+      <select name="tender_id">
+        <option value="">— без привязки —</option>
+        {% for t in tender_opts %}<option value="{{ t.tender_id }}" {{ 'selected' if prefill_id==t.tender_id }}>{{ t.title[:70] }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="f">
+      <label>Срок</label>
+      <input type="date" name="due_date">
+    </div>
+    <div class="f">
+      <label>Приоритет</label>
+      <select name="priority">
+        <option value="normal">Обычный</option>
+        <option value="high">Высокий</option>
+        <option value="low">Низкий</option>
+      </select>
+    </div>
+    <button class="btn-primary" type="submit">Добавить</button>
+  </form>
+</div>
+
+{% if active_tasks %}
+<div class="task-group">Активные</div>
+<div class="tasklist">
+  {% for t in active_tasks %}{% include "_task_item.html" %}{% endfor %}
+</div>
+{% endif %}
+
+{% if done_tasks %}
+<div class="task-group">Выполненные</div>
+<div class="tasklist">
+  {% for t in done_tasks %}{% include "_task_item.html" %}{% endfor %}
+</div>
+{% endif %}
+
+{% if not active_tasks and not done_tasks %}
+<div class="empty">Задач пока нет. Добавь первую сверху — или создай задачу прямо из карточки тендера кнопкой «В задачи».</div>
+{% endif %}
+{% endblock %}

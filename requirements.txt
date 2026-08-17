@@ -1,0 +1,7 @@
+requests>=2.31
+beautifulsoup4>=4.12
+lxml>=5.0
+Flask>=3.0
+
+# Опционально — только если включаете ИИ-слой (USE_LLM=True в main.py):
+# anthropic>=0.40

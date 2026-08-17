@@ -1,0 +1,23 @@
+<div class="trow">
+  <a class="row-link" href="{{ url_for('tender', tender_id=t.tender_id, ret=request.full_path) }}">
+    <div class="tmain">
+      <div class="ttitle">{{ t.title }}</div>
+      <div class="ttags">
+        <span class="ttag ttag-{{ 'license' if t.is_license else 'type' }}">{{ t.direction_name }}</span>
+        {% if t.ptype %}<span class="ttag ttag-{{ t.ptype }}">{{ t.ptype_label }}</span>{% endif %}
+        {% if taken_by.get(t.tender_id) %}<span class="ttag ttag-taken">Взято: {{ taken_by[t.tender_id] }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="tmeta">
+      <span class="tdays {{ 'soon' if t.deadline_soon }}">{% if t.deadline_fmt != '—' %}до {{ t.deadline_fmt }}{% if t.days_fmt != '—' %} · {{ t.days_fmt }}{% endif %}{% else %}срок не указан{% endif %}</span>
+      <span class="tscore">{{ t.score }}% соответствие</span>
+    </div>
+  </a>
+  {% if t.tender_id in my_fav_ids %}
+    <form class="take-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-take mine" type="submit">В работе у меня</button></form>
+  {% elif taken_by.get(t.tender_id) %}
+    <span class="btn-take taken" title="Взято: {{ taken_by[t.tender_id] }}">Занято</span>
+  {% else %}
+    <form class="take-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-take" type="submit">Взять в работу</button></form>
+  {% endif %}
+</div>
