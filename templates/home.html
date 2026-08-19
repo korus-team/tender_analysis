@@ -4,6 +4,10 @@
 <div class="topbar">
   <div><h1>Состояние на {{ now }}</h1></div>
   <div class="topbar-right">
+    <form method="post" action="{{ url_for('import_kontur') }}" enctype="multipart/form-data">
+      <label class="btn-label" for="konturFile"><svg class="icon"><use href="#i-plus"/></svg>Загрузить Excel</label>
+      <input id="konturFile" type="file" name="kontur_file" accept=".xlsx" hidden onchange="this.form.submit()">
+    </form>
     <form method="post" action="{{ url_for('ingest') }}"><button class="btn-collect" type="submit"><svg class="icon"><use href="#i-search"/></svg>Собрать тендеры</button></form>
     {% include "_notif.html" %}
   </div>
@@ -13,7 +17,7 @@
   <div class="pstat p1"><div class="plabel">Найдено новых тендеров</div><div class="pnum">{{ stat_total }}</div><div class="pdelta">актуальных сейчас</div></div>
   <div class="pstat p2"><div class="plabel">Наиболее подходящих</div><div class="pnum">{{ stat_top }}</div><div class="pdelta">высокое соответствие</div></div>
   <div class="pstat p3"><div class="plabel">Лицензионные запросы</div><div class="pnum">{{ stat_lic }}</div><div class="pdelta">маржинальные</div></div>
-  <div class="pstat p4"><div class="plabel">Приоритетные компании</div><div class="pnum">{{ prio_companies }}</div><div class="pdelta">в списке</div></div>
+  <div class="pstat p4"><div class="plabel">Приоритетные компании</div><div class="pnum">{{ stat_priority }}</div><div class="pdelta">новых тендеров</div></div>
 </div>
 
 <form method="get" action="{{ url_for('home') }}" id="searchForm">
@@ -62,18 +66,18 @@
       {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
       {% if t.ptype=='gov' %}<span class="ttag ttag-gov2">Государственный</span>{% elif t.ptype=='com' %}<span class="ttag ttag-com2">Коммерческий</span>{% endif %}
       {% if t.is_license %}<span class="ttag ttag-license2">Лицензионный</span>{% endif %}
+      {% if t.direction not in ('license', 'other') %}<span class="ttag ttag-law">{{ t.direction_name }}</span>{% endif %}
     </div>
     <div class="tcard-title"><a href="{{ url_for('tender', tender_id=t.tender_id, ret=request.full_path) }}">{{ t.title }}</a></div>
     <div class="tcard-sub">{{ t.customer or 'Заказчик скрыт площадкой' }}</div>
     <div class="ttags" style="margin-top:9px">
-      {% if (t.score or 0) >= 85 %}<span class="ttag ttag-match">Наиболее подходящее</span>{% endif %}
+      {% if t.level == 'high' %}<span class="ttag ttag-match">Наиболее подходящее</span>{% endif %}
       {% if t.law %}<span class="ttag ttag-law">{{ t.law }}</span>{% endif %}
     </div>
   </div>
   <div class="tcard-right">
     <div class="tcard-price">{{ t.price_fmt }}</div>
-    <div class="tcard-deadline">Подача заявок<br><b>до {{ t.deadline_fmt }}</b></div>
-    {% if t.warn %}<div class="tcard-warn">{{ t.warn }}</div>{% elif t.deadline_soon %}<div class="tcard-warn">Осталось {{ t.days_fmt }}</div>{% endif %}
+    <div class="tcard-deadline">До окончания подачи<br><b class="{{ 'soon' if t.deadline_soon }}">{{ t.time_left_fmt }}</b></div>
   </div>
   <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
     <button class="tcard-heart {{ 'on' if t.tender_id in my_fav_ids }}" type="submit" aria-label="В избранное"><svg class="icon"><use href="#i-heart"/></svg></button>

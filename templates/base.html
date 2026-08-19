@@ -149,9 +149,10 @@ svg{display:block}
 }
 .avatar{
   width:44px;height:44px;border-radius:50%;
-  background:#D7DBE0;flex-shrink:0;
-  background-image:radial-gradient(circle at 50% 38%, #E9ECEF 0 34%, #CFD4DA 34% 100%);
+  background:var(--accent-soft);color:var(--accent);flex-shrink:0;
+  display:grid;place-items:center;overflow:hidden;text-decoration:none;font-weight:700;font-size:17px;
 }
+.avatar img{width:100%;height:100%;display:block;object-fit:cover}
 .user-name{font-weight:600;font-size:15px;line-height:1.25}
 .user-role{color:var(--text-2);font-size:13px}
 .user-meta{min-width:0;display:flex;flex-direction:column;gap:1px}
@@ -522,6 +523,7 @@ svg{display:block}
 .tcard-price{font-size:16px;font-weight:700}
 .tcard-deadline{font-size:14px;color:var(--text-2);margin-top:8px;line-height:1.35}
 .tcard-deadline b{color:var(--text);font-weight:600}
+.tcard-deadline b.soon{color:#D6412B}
 .tcard-warn{display:inline-block;margin-top:8px;background:#E7E9ED;color:#5C6570;font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:8px}
 .tcard-heart{flex-shrink:0;width:40px;height:40px;display:grid;place-items:center;border:none;background:transparent;cursor:pointer;color:var(--text-3);padding:0}
 .tcard-heart .icon{width:24px;height:24px}
@@ -563,6 +565,28 @@ svg{display:block}
 .set-2col{display:flex;gap:10px}
 .set-2col > *{flex:1}
 .win-stack{display:flex;flex-direction:column;gap:8px}
+.account-section{margin-top:42px;scroll-margin-top:24px}
+.account-heading{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px}
+.account-heading h2{font-size:22px;margin-bottom:4px}
+.account-heading p{font-size:14px;color:var(--text-2)}
+.account-card{display:grid;grid-template-columns:220px minmax(0,1fr);gap:28px;background:#fff;border:2px solid #DABDFF;border-radius:18px;padding:24px;max-width:820px}
+.account-photo-col{display:flex;flex-direction:column;align-items:center;text-align:center;border-right:1px solid var(--border);padding-right:28px}
+.account-avatar{width:112px;height:112px;border-radius:50%;background:var(--accent-soft);color:var(--accent);display:grid;place-items:center;overflow:hidden;font-size:40px;font-weight:700;margin-bottom:16px}
+.account-avatar img{width:100%;height:100%;object-fit:cover;display:block}
+.account-upload{justify-content:center;width:100%;margin-bottom:8px}
+.account-file-name{font-size:12px;color:var(--text-3);line-height:1.4;overflow-wrap:anywhere}
+.account-remove{display:flex;align-items:center;gap:7px;margin-top:12px;font-size:13px;color:var(--text-2);cursor:pointer}
+.account-remove input{accent-color:var(--accent)}
+.account-fields{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.account-field{min-width:0}
+.account-field-wide{grid-column:1/-1}
+.account-field label{display:block;font-size:14px;font-weight:600;margin-bottom:7px}
+.account-field input{width:100%;border:1px solid var(--border-2);border-radius:10px;padding:11px 12px;font-family:inherit;font-size:14px;background:#fff}
+.account-field input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(132,91,208,.10)}
+.account-divider{grid-column:1/-1;border-top:1px solid var(--border);margin:1px 0}
+.account-hint{font-size:12px;color:var(--text-3);margin-top:6px}
+.account-actions{display:flex;justify-content:flex-start;margin-top:2px}
+@media(max-width:700px){.account-card{grid-template-columns:1fr}.account-photo-col{border-right:0;border-bottom:1px solid var(--border);padding:0 0 22px}.account-fields{grid-template-columns:1fr}.account-field{grid-column:1/-1}}
 /* ---- карточка тендера (новый дизайн) ---- */
 .t-actions-top{display:flex;align-items:center;gap:12px;margin-bottom:16px}
 .btn-label{display:inline-flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--border-2);border-radius:12px;padding:10px 16px;font-family:inherit;font-size:14px;font-weight:600;cursor:pointer;color:var(--text);text-decoration:none}
@@ -1011,7 +1035,9 @@ svg{display:block}
     </nav>
     <div class="nav-spacer"></div>
     <div class="user">
-      <div class="avatar"></div>
+      <a class="avatar" href="{{ url_for('settings') }}#account" aria-label="Настройки профиля">
+        {% if current_user and current_user.avatar_url %}<img src="{{ current_user.avatar_url }}" alt="">{% else %}<span>{{ current_user.username[:1]|upper if current_user and current_user.username else 'U' }}</span>{% endif %}
+      </a>
       <div class="user-meta">
         <div class="user-name">{{ current_user.username if current_user else 'Гость' }}</div>
         <a class="user-logout" href="{{ url_for('logout') }}">Выйти</a>

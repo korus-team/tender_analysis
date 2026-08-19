@@ -8,7 +8,7 @@
     {% if notifications %}
       {% for n in notifications %}
       <a class="notif-item {{ 'read' if n.read }}" href="{{ n.url }}">
-        <span class="notif-ic"><svg class="icon"><use href="#i-heart"/></svg></span>
+        <span class="notif-ic"><svg class="icon"><use href="#{{ n.icon or 'i-bell' }}"/></svg></span>
         <span class="notif-tbody"><span class="notif-title">{{ n.title }}</span><span class="notif-meta">{{ n.meta }}</span></span>
         {% if not n.read %}<span class="notif-unread" aria-label="Непрочитано"></span>{% endif %}
       </a>

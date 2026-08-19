@@ -357,10 +357,49 @@ def query_tenders(conn: sqlite3.Connection, status: str | None = None,
     return [_row_to_dict(r) for r in conn.execute(sql, params).fetchall()]
 
 
+def _table_exists(conn: sqlite3.Connection, name: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (name,)
+    ).fetchone() is not None
+
+
+def delete_tenders(conn: sqlite3.Connection, tender_ids, commit: bool = True) -> int:
+    """Удаляет тендеры и связанные служебные записи одним согласованным действием."""
+    ids = list(dict.fromkeys(tid for tid in tender_ids if tid))
+    removed = 0
+    for tender_id in ids:
+        if _table_exists(conn, "fav_notifications"):
+            notification_ids = [row[0] for row in conn.execute(
+                "SELECT id FROM fav_notifications WHERE tender_id = ?", (tender_id,)
+            )]
+            if notification_ids and _table_exists(conn, "notif_seen"):
+                conn.executemany(
+                    "DELETE FROM notif_seen WHERE notif_id = ?",
+                    [(notification_id,) for notification_id in notification_ids],
+                )
+            conn.execute("DELETE FROM fav_notifications WHERE tender_id = ?", (tender_id,))
+        if _table_exists(conn, "site_notifications"):
+            site_notification_ids = [row[0] for row in conn.execute(
+                "SELECT id FROM site_notifications WHERE tender_id = ?", (tender_id,)
+            )]
+            if site_notification_ids and _table_exists(conn, "site_notif_seen"):
+                conn.executemany(
+                    "DELETE FROM site_notif_seen WHERE notification_id = ?",
+                    [(notification_id,) for notification_id in site_notification_ids],
+                )
+            conn.execute("DELETE FROM site_notifications WHERE tender_id = ?", (tender_id,))
+        for table in ("user_favorites", "tender_meta", "status_history", "app_tasks"):
+            if _table_exists(conn, table):
+                conn.execute(f"DELETE FROM {table} WHERE tender_id = ?", (tender_id,))
+        cur = conn.execute("DELETE FROM tenders WHERE tender_id = ?", (tender_id,))
+        removed += cur.rowcount
+    if commit:
+        conn.commit()
+    return removed
+
+
 def delete_tender(conn: sqlite3.Connection, tender_id: str) -> bool:
-    cur = conn.execute("DELETE FROM tenders WHERE tender_id = ?", (tender_id,))
-    conn.commit()
-    return cur.rowcount > 0
+    return delete_tenders(conn, [tender_id]) > 0
 
 
 def update_score(conn: sqlite3.Connection, tender_id: str, score: int,
