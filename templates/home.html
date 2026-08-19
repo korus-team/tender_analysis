@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
+<style>.filters-panel--hidden{display:none}</style>
 <div class="topbar">
   <div><h1>Состояние на {{ now }}</h1></div>
   <div class="topbar-right">
@@ -20,7 +21,7 @@
     <label class="search-box"><svg class="icon"><use href="#i-search"/></svg><input name="q" value="{{ q }}" placeholder="Поиск по ключевым словам, номеру или заказчику..."></label>
     <button class="btn-filter" type="button" id="filtBtn"><svg class="icon"><use href="#i-filter"/></svg>Фильтры</button>
   </div>
-  <div class="filters-panel" id="filtPanel" style="display:{{ 'flex' if (direction or ptype) else 'none' }}">
+  <div class="filters-panel{% if not (direction or ptype) %} filters-panel--hidden{% endif %}" id="filtPanel">
     <select class="chip-select" name="direction" onchange="document.getElementById('searchForm').submit()">
       <option value="">Тип закупки: все</option>
       {% for k in type_keys %}<option value="{{ k }}" {{ 'selected' if direction==k }}>{{ dir_name(k) }}</option>{% endfor %}
@@ -92,6 +93,10 @@
 
 <script>
   var fb=document.getElementById('filtBtn'), fp=document.getElementById('filtPanel');
-  if(fb&&fp){fb.addEventListener('click',function(){fp.style.display=(fp.style.display==='none'?'flex':'none');});}
+  if(fb&&fp){
+    fb.addEventListener('click',function(){
+      fp.classList.toggle('filters-panel--hidden');
+    });
+  }
 </script>
 {% endblock %}

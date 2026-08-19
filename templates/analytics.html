@@ -3,42 +3,232 @@
 <div class="topbar">
   <div><h1>Аналитика</h1></div>
   <div class="topbar-right">
-    <select class="chip-select"><option>За 30 дней</option><option>За 7 дней</option><option>За всё время</option></select>
+    <select class="chip-select">
+      <option>За 30 дней</option>
+      <option>За 7 дней</option>
+      <option>За всё время</option>
+    </select>
     {% include "_notif.html" %}
   </div>
 </div>
 
 <div class="stat-grid cols-4">
   {% for c in cards %}
-  <div class="pstat {{ c.cls }}"><div class="plabel">{{ c.label }}</div><div class="pnum">{{ c.value }}</div></div>
+  <div class="pstat {{ c.cls }}">
+    <div class="plabel">{{ c.label }}</div>
+    <div class="pnum">{{ c.value }}</div>
+  </div>
   {% endfor %}
 </div>
 
-<div class="an-card">
-  <div class="donut-wrap">
-    <svg viewBox="0 0 210 210">
-      <circle cx="105" cy="105" r="80" fill="none" stroke="#EFF1F4" stroke-width="26"/>
-      <g transform="rotate(-90 105 105)">
-      {% for s in segs %}<circle cx="105" cy="105" r="80" fill="none" stroke="{{ s.color }}" stroke-width="26" stroke-dasharray="{{ s.dash }}" stroke-dashoffset="{{ s.offset }}"/>{% endfor %}
-      </g>
-    </svg>
-    <div class="donut-center"><b>{{ donut_total }}</b><span>тендеров</span></div>
+{% set analytics_palette = ['#F3DFFF', '#FFE6DF', '#D7FFD8', '#E4F4FB'] %}
+
+<div class="analytics-main-grid">
+
+  <div class="an-card">
+    <div class="donut-wrap">
+      <svg viewBox="0 0 210 210" aria-label="Распределение тендеров по типам">
+        <circle
+          cx="105"
+          cy="105"
+          r="80"
+          fill="none"
+          stroke="#EEEEF2"
+          stroke-width="26"
+        />
+        <g transform="rotate(-90 105 105)">
+          {% for s in segs %}
+          <circle
+            cx="105"
+            cy="105"
+            r="80"
+            fill="none"
+            stroke="{{ analytics_palette[loop.index0] }}"
+            stroke-width="26"
+            stroke-dasharray="{{ s.dash }}"
+            stroke-dashoffset="{{ s.offset }}"
+          />
+          {% endfor %}
+        </g>
+      </svg>
+
+      <div class="donut-center">
+        <b>{{ donut_total }}</b>
+        <span>тендеров</span>
+      </div>
+    </div>
+
+    <div class="legend">
+      {% for l in legend %}
+      <div class="legend-item">
+        {% if loop.index0 == 0 %}
+        <span class="dot dot-commercial"></span>
+        {% elif loop.index0 == 1 %}
+        <span class="dot dot-commercial-license"></span>
+        {% elif loop.index0 == 2 %}
+        <span class="dot dot-gov-license"></span>
+        {% else %}
+        <span class="dot dot-gov"></span>
+        {% endif %}
+        <span>{{ l.name }}{% if l.count %} · {{ l.count }}{% endif %}</span>
+      </div>
+      {% endfor %}
+
+      {% if donut_total == 0 %}
+      <div class="analytics-empty">Пока нет данных по типам</div>
+      {% endif %}
+    </div>
   </div>
-  <div class="legend">
-    {% for l in legend %}<div class="legend-item"><span class="dot" style="background:{{ l.color }}"></span>{{ l.name }}{% if l.count %} · {{ l.count }}{% endif %}</div>{% endfor %}
-    {% if donut_total == 0 %}<div style="color:var(--text-2)">Пока нет данных по типам</div>{% endif %}
-  </div>
+
   <div class="an-insert">
     <div class="ai-num">{{ irr_passed }} из {{ irr_total }}</div>
     <div class="ai-txt">нерелевантных тендеров было передано дальше</div>
   </div>
+
 </div>
 
 <style>
-.an-card{display:grid;grid-template-columns:auto 1fr 240px;gap:28px;align-items:center;background:#fff;border:1.5px solid var(--border-2);border-radius:18px;padding:26px 30px}
-.an-insert{border:2.5px solid #EE9A4E;border-radius:16px;padding:22px;text-align:left}
-.ai-num{font-size:30px;font-weight:800;letter-spacing:-.02em}
-.ai-txt{color:var(--text-2);font-size:14px;margin-top:8px;line-height:1.4}
-@media (max-width:1000px){.an-card{grid-template-columns:1fr}.donut-wrap{margin:0 auto}}
+/* Основной ряд аналитики: диаграмма + карточка нерелевантных */
+.analytics-main-grid{
+  display:grid;
+  grid-template-columns:minmax(0, 1fr) 280px;
+  gap:28px;
+  align-items:stretch;
+}
+
+/* Карточка с круговой диаграммой */
+.an-card{
+  min-width:0;
+  display:grid;
+  grid-template-columns:auto minmax(240px, 1fr);
+  gap:38px;
+  align-items:center;
+  background:#FFFFFF;
+  border:5px solid #EEEEF2;
+  border-radius:20px;
+  padding:28px 34px;
+}
+
+/* Круговая диаграмма */
+.an-card .donut-wrap{
+  width:240px;
+  height:240px;
+}
+
+.an-card .donut-wrap svg{
+  width:240px;
+  height:240px;
+}
+
+.an-card .donut-center b{
+  font-size:32px;
+  font-weight:600;
+  color:#000000;
+}
+
+.an-card .donut-center span{
+  margin-top:4px;
+  font-size:16px;
+  font-weight:400;
+  color:var(--text-2);
+}
+
+/* Легенда */
+.an-card .legend{
+  gap:16px;
+}
+
+.an-card .legend-item{
+  display:flex;
+  align-items:center;
+  gap:14px;
+  font-size:17px;
+  font-weight:400;
+  color:#000000;
+}
+
+.an-card .dot{
+  width:18px;
+  height:18px;
+}
+
+.dot-commercial{background:#F3DFFF}
+.dot-commercial-license{background:#FFE6DF}
+.dot-gov-license{background:#D7FFD8}
+.dot-gov{background:#E4F4FB}
+
+.analytics-empty{
+  margin-top:4px;
+  font-size:16px;
+  font-weight:400;
+  color:var(--text-2);
+}
+
+/* Карточка нерелевантных тендеров */
+.an-insert{
+  height:100%;
+  min-height:100%;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  background:#FFFFFF;
+  border:5px solid #FFA88B;
+  border-radius:20px;
+  padding:28px 24px;
+  text-align:left;
+}
+
+.ai-num{
+  font-size:34px;
+  font-weight:600;
+  line-height:1.15;
+  letter-spacing:-.02em;
+  color:#000000;
+}
+
+.ai-txt{
+  margin-top:30px;
+  font-size:17px;
+  font-weight:400;
+  line-height:1.45;
+  color:#000000;
+}
+
+/* Адаптив */
+@media (max-width:1100px){
+  .analytics-main-grid{
+    grid-template-columns:1fr;
+  }
+
+  .an-insert{
+    min-height:190px;
+  }
+}
+
+@media (max-width:720px){
+  .an-card{
+    grid-template-columns:1fr;
+    justify-items:center;
+  }
+
+  .an-card .legend{
+    width:100%;
+  }
+}
+
+/* KPI-карточки аналитики: цифры выровнены по нижнему краю */
+.stat-grid .pstat{
+  display:flex;
+  flex-direction:column;
+}
+
+.stat-grid .pstat .plabel{
+  min-height:0;
+}
+
+.stat-grid .pstat .pnum{
+  margin-top:auto;
+}
+
 </style>
 {% endblock %}
