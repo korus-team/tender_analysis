@@ -1,119 +1,243 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="topbar"><div><h1>Настройки</h1></div><div class="topbar-right">{% include "_notif.html" %}</div></div>
+<div class="settings-page">
 
-<form method="post" action="{{ url_for('settings') }}">
-<div class="set-wrap">
-  <div>
-    {% set groups = [
-      ('Уведомления о новых наиболее подходящих закупках','n_new_email','n_new_site'),
-      ('Уведомления об изменении в избранном тендере','n_fav_email','n_fav_site'),
-      ('Напоминания по избранным тендерам','n_remind_email','n_remind_site')] %}
-    {% for title, ke, ks in groups %}
-    <div class="set-group">
-      <h4>{{ title }}</h4>
-      <label class="toggle-row"><span class="toggle"><input type="checkbox" name="{{ ke }}" {{ 'checked' if s[ke]=='1' }}><span class="tr"></span></span><span>На почту</span></label>
-      <label class="toggle-row"><span class="toggle"><input type="checkbox" name="{{ ks }}" {{ 'checked' if s[ks]=='1' }}><span class="tr"></span></span><span>На сайте</span></label>
+  <div class="topbar">
+    <div><h1>Настройки</h1></div>
+    <div class="topbar-right">
+      <button class="settings-save" type="button" id="settingsSaveBtn">Сохранить изменения</button>
+      {% include "_notif.html" %}
     </div>
-    {% endfor %}
-    <button class="btn-take" type="submit" style="margin-top:6px">Сохранить настройки</button>
   </div>
 
-  <div class="set-panel">
-    <div class="field"><label>Часовой пояс</label>
-      <select name="timezone">
-        {% for tz in ['Московское время UTC +3','Калининград UTC +2','Самара UTC +4','Екатеринбург UTC +5','Новосибирск UTC +7','Владивосток UTC +10'] %}
-        <option {{ 'selected' if s.timezone==tz }}>{{ tz }}</option>{% endfor %}
-      </select>
-    </div>
-    <div class="field"><label>Частота проверки тендеров</label>
-      <div class="set-2col">
-        <select name="check_freq" id="checkFreq" onchange="toggleWins()">
-          <option value="1" {{ 'selected' if s.check_freq=='1' }}>1 раз в день</option>
-          <option value="3" {{ 'selected' if s.check_freq=='3' }}>3 раза в день</option>
-        </select>
-        <div class="win-stack">
-          <select name="check_win1">{% for w in windows %}<option {{ 'selected' if s.check_win1==w }}>{{ w }}</option>{% endfor %}</select>
-          <select name="check_win2" class="win23">{% for w in windows %}<option {{ 'selected' if s.check_win2==w }}>{{ w }}</option>{% endfor %}</select>
-          <select name="check_win3" class="win23">{% for w in windows %}<option {{ 'selected' if s.check_win3==w }}>{{ w }}</option>{% endfor %}</select>
+  <div class="settings-tabs">
+    <button class="settings-tab on" type="button" data-settings-tab="notifications">Уведомления</button>
+    <button class="settings-tab" type="button" data-settings-tab="profile">Профиль</button>
+  </div>
+
+  <!-- ==================== УВЕДОМЛЕНИЯ ==================== -->
+  <section class="settings-panel" data-settings-panel="notifications">
+    <form method="post" action="{{ url_for('settings') }}" id="settingsNotificationsForm">
+      <div class="settings-grid">
+
+        <div class="settings-card pink">
+          <h3>Уведомления</h3>
+          <div class="card-sub">Выберите, какие события и куда мы будем отправлять уведомления.</div>
+
+          <div class="notify-table">
+            <div class="notify-head">
+              <span>Событие</span>
+              <span>На сайте</span>
+              <span>На почту</span>
+            </div>
+
+            <div class="notify-row">
+              <div>
+                <div class="notify-title">Новые подходящие тендеры</div>
+                <div class="notify-desc">Тендеры, которые ИИ считает релевантными</div>
+              </div>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_new_site" {{ 'checked' if s.n_new_site=='1' }}><span class="tr"></span></span></label>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_new_email" {{ 'checked' if s.n_new_email=='1' }}><span class="tr"></span></span></label>
+            </div>
+
+            <div class="notify-row">
+              <div>
+                <div class="notify-title">Изменения в избранных тендерах</div>
+                <div class="notify-desc">Изменение срока, документов или условий</div>
+              </div>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_fav_site" {{ 'checked' if s.n_fav_site=='1' }}><span class="tr"></span></span></label>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_fav_email" {{ 'checked' if s.n_fav_email=='1' }}><span class="tr"></span></span></label>
+            </div>
+
+            <div class="notify-row">
+              <div>
+                <div class="notify-title">Напоминание о сроке подачи</div>
+                <div class="notify-desc">Напомним перед окончанием приема заявок</div>
+              </div>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_remind_site" {{ 'checked' if s.n_remind_site=='1' }}><span class="tr"></span></span></label>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_remind_email" {{ 'checked' if s.n_remind_email=='1' }}><span class="tr"></span></span></label>
+            </div>
+          </div>
         </div>
+
+        <div class="settings-right">
+          <div class="settings-card gold">
+            <h3>Расписание</h3>
+
+            <div class="settings-field" style="margin-top:18px">
+              <label>Часовой пояс</label>
+              <select name="timezone">
+                {% for tz in ['Московское время UTC +3','Калининград UTC +2','Самара UTC +4','Екатеринбург UTC +5','Новосибирск UTC +7','Владивосток UTC +10'] %}
+                <option {{ 'selected' if s.timezone==tz }}>{{ tz }}</option>
+                {% endfor %}
+              </select>
+            </div>
+
+            <div class="settings-field">
+              <label>Проверять новые тендеры</label>
+              <div class="settings-two">
+                <select name="check_freq" id="checkFreq" onchange="toggleWins()">
+                  <option value="1" {{ 'selected' if s.check_freq=='1' }}>1 раз в день</option>
+                  <option value="3" {{ 'selected' if s.check_freq=='3' }}>3 раза в день</option>
+                </select>
+                <div class="win-stack">
+                  <select name="check_win1">{% for w in windows %}<option {{ 'selected' if s.check_win1==w }}>{{ w }}</option>{% endfor %}</select>
+                  <select name="check_win2" class="win23">{% for w in windows %}<option {{ 'selected' if s.check_win2==w }}>{{ w }}</option>{% endfor %}</select>
+                  <select name="check_win3" class="win23">{% for w in windows %}<option {{ 'selected' if s.check_win3==w }}>{{ w }}</option>{% endfor %}</select>
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-field">
+              <label>Отправлять уведомления</label>
+              <div class="settings-two">
+                <select name="notify_freq">
+                  <option value="1" {{ 'selected' if s.notify_freq=='1' }}>1 раз в день</option>
+                  <option value="2" {{ 'selected' if s.notify_freq=='2' }}>2 раза в день</option>
+                </select>
+                <select name="notify_win">{% for w in windows %}<option {{ 'selected' if s.notify_win==w }}>{{ w }}</option>{% endfor %}</select>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-card blue">
+            <h3>Куда отправлять</h3>
+
+            <div class="settings-field" style="margin-top:18px">
+              <label>Электронная почта</label>
+              <div class="settings-email">
+                <input name="email" id="emailInp" value="{{ s.email }}" placeholder="name@korusconsulting.ru">
+                <button type="button" class="email-x" onclick="document.getElementById('emailInp').value=''" aria-label="Очистить"><svg class="icon"><use href="#i-close"/></svg></button>
+              </div>
+              <span class="settings-add-link"><span style="font-size:18px">＋</span>Добавить дополнительную почту</span>
+            </div>
+
+            <button class="btn-sm" type="submit" formaction="{{ url_for('settings_test_email') }}">Отправить тестовое письмо</button>
+          </div>
+        </div>
+
       </div>
-    </div>
-    <div class="field"><label>Частота уведомления</label>
-      <div class="set-2col">
-        <select name="notify_freq"><option value="1" {{ 'selected' if s.notify_freq=='1' }}>1 раз в день</option><option value="2" {{ 'selected' if s.notify_freq=='2' }}>2 раза в день</option></select>
-        <select name="notify_win">{% for w in windows %}<option {{ 'selected' if s.notify_win==w }}>{{ w }}</option>{% endfor %}</select>
+    </form>
+  </section>
+
+  <!-- ==================== ПРОФИЛЬ ==================== -->
+  <section class="settings-panel" data-settings-panel="profile" hidden>
+    <form method="post" action="{{ url_for('settings_account') }}" enctype="multipart/form-data" id="settingsProfileForm">
+      <div class="profile-grid">
+
+        <div class="settings-card pink">
+          <h3>Личная информация</h3>
+          <div class="card-sub">Ваш профиль и основные данные.</div>
+
+          <div class="profile-main">
+            <div class="profile-photo">
+              <div class="profile-avatar">
+                {% if current_user and current_user.avatar_url %}
+                  <img src="{{ current_user.avatar_url }}" alt="Фото профиля">
+                {% else %}
+                  <span>{{ current_user.username[:2]|upper if current_user and current_user.username else 'U' }}</span>
+                {% endif %}
+              </div>
+
+              <label class="btn-label profile-upload" for="avatarFile">
+                <svg class="icon"><use href="#i-plus"/></svg>Изменить фото
+              </label>
+              <input id="avatarFile" type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+              <div class="profile-file-hint" id="avatarFileName">JPG, PNG не более 3 МБ</div>
+
+              {% if current_user and current_user.has_avatar %}
+              <label class="account-remove"><input type="checkbox" name="remove_avatar" value="1"> Удалить текущее фото</label>
+              {% endif %}
+            </div>
+
+            <div>
+              <div class="settings-field">
+                <label for="accountUsername">Логин</label>
+                <input id="accountUsername" name="username" value="{{ current_user.username if current_user else '' }}" minlength="2" autocomplete="username" required>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-right">
+          <div class="settings-card gold">
+            <h3>Контактные данные</h3>
+
+            <div class="settings-field" style="margin-top:18px">
+              <label>Электронная почта</label>
+              <input value="{{ s.email }}" readonly>
+            </div>
+
+            <span class="settings-add-link"><span style="font-size:18px">＋</span>Добавить телефон или почту</span>
+          </div>
+
+          <div class="settings-card blue">
+            <h3>Смена пароля</h3>
+            <div class="card-sub">Пароль должен содержать не менее 4 символов.</div>
+
+            <div class="settings-field">
+              <label for="currentPassword">Текущий пароль</label>
+              <input id="currentPassword" type="password" name="current_password" autocomplete="current-password" placeholder="Введите текущий пароль">
+            </div>
+
+            <div class="settings-field">
+              <label for="newPassword">Новый пароль</label>
+              <input id="newPassword" type="password" name="new_password" minlength="4" autocomplete="new-password" placeholder="Введите новый пароль">
+            </div>
+
+            <div class="settings-field">
+              <label for="passwordConfirm">Подтвердите новый пароль</label>
+              <input id="passwordConfirm" type="password" name="password_confirm" minlength="4" autocomplete="new-password" placeholder="Повторите новый пароль">
+            </div>
+
+            <div class="password-actions">
+              <button class="settings-save" type="submit">Изменить пароль</button>
+            </div>
+          </div>
+        </div>
+
       </div>
-    </div>
-    <div class="field"><label>Электронная почта</label>
-      <div class="email-wrap"><input name="email" id="emailInp" value="{{ s.email }}" placeholder="name@korusconsulting.ru"><button type="button" class="email-x" onclick="document.getElementById('emailInp').value=''" aria-label="Очистить"><svg class="icon"><use href="#i-close"/></svg></button></div>
-    </div>
-    <button class="btn-take mine" type="submit" formaction="{{ url_for('settings_test_email') }}" style="margin-bottom:12px">Отправить тестовое письмо</button>
-    <div class="hint">
-      {% if smtp_ready %}
-        SMTP подключён. После загрузки Excel письмо о новых наиболее подходящих тендерах отправится автоматически.
-      {% else %}
-        Для отправки заполните SMTP-сервер, логин, пароль и адрес отправителя в файле <code>{{ smtp_env_path }}</code>. Поддерживаются SSL (обычно порт 465) и STARTTLS (обычно порт 587).
-      {% endif %}
-    </div>
-  </div>
+    </form>
+  </section>
+
 </div>
-</form>
-
-<section class="account-section" id="account">
-  <div class="account-heading">
-    <div>
-      <h2>Учётная запись</h2>
-      <p>Фото профиля, логин и пароль для входа в приложение</p>
-    </div>
-  </div>
-  <form class="account-card" method="post" action="{{ url_for('settings_account') }}" enctype="multipart/form-data">
-    <div class="account-photo-col">
-      <div class="account-avatar">
-        {% if current_user and current_user.avatar_url %}
-          <img src="{{ current_user.avatar_url }}" alt="Фото профиля">
-        {% else %}
-          <span>{{ current_user.username[:1]|upper if current_user and current_user.username else 'U' }}</span>
-        {% endif %}
-      </div>
-      <label class="btn-label account-upload" for="avatarFile"><svg class="icon"><use href="#i-plus"/></svg>Выбрать фото</label>
-      <input id="avatarFile" type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
-      <div class="account-file-name" id="avatarFileName">PNG, JPG, GIF или WEBP · до 3 МБ</div>
-      {% if current_user and current_user.has_avatar %}
-      <label class="account-remove"><input type="checkbox" name="remove_avatar" value="1"> Удалить текущее фото</label>
-      {% endif %}
-    </div>
-
-    <div class="account-fields">
-      <div class="account-field account-field-wide">
-        <label for="accountUsername">Логин</label>
-        <input id="accountUsername" name="username" value="{{ current_user.username if current_user else '' }}" minlength="2" autocomplete="username" required>
-      </div>
-      <div class="account-divider"></div>
-      <div class="account-field">
-        <label for="newPassword">Новый пароль</label>
-        <input id="newPassword" type="password" name="new_password" minlength="4" autocomplete="new-password" placeholder="Оставьте пустым, если не меняете">
-      </div>
-      <div class="account-field">
-        <label for="passwordConfirm">Повторите новый пароль</label>
-        <input id="passwordConfirm" type="password" name="password_confirm" minlength="4" autocomplete="new-password" placeholder="Повторите новый пароль">
-      </div>
-      <div class="account-field account-field-wide">
-        <label for="currentPassword">Текущий пароль</label>
-        <input id="currentPassword" type="password" name="current_password" autocomplete="current-password" placeholder="Нужен для смены логина или пароля">
-        <div class="account-hint">Для замены только фотографии текущий пароль вводить не нужно.</div>
-      </div>
-      <div class="account-actions account-field-wide">
-        <button class="btn-take" type="submit">Сохранить данные</button>
-      </div>
-    </div>
-  </form>
-</section>
 
 <script>
-function toggleWins(){var f=document.getElementById('checkFreq').value;document.querySelectorAll('.win23').forEach(function(el){el.style.display=(f==='3'?'block':'none');});}
+function toggleWins(){
+  var f=document.getElementById('checkFreq');
+  if(!f) return;
+  document.querySelectorAll('.win23').forEach(function(el){
+    el.style.display=(f.value==='3'?'block':'none');
+  });
+}
 toggleWins();
-var avatarFile=document.getElementById('avatarFile'), avatarFileName=document.getElementById('avatarFileName');
-if(avatarFile){avatarFile.addEventListener('change',function(){avatarFileName.textContent=this.files.length?this.files[0].name:'PNG, JPG, GIF или WEBP · до 3 МБ';});}
+
+var tabs=document.querySelectorAll('[data-settings-tab]');
+var panels=document.querySelectorAll('[data-settings-panel]');
+tabs.forEach(function(tab){
+  tab.addEventListener('click',function(){
+    var key=this.getAttribute('data-settings-tab');
+    tabs.forEach(function(x){x.classList.toggle('on',x===tab);});
+    panels.forEach(function(p){p.hidden=p.getAttribute('data-settings-panel')!==key;});
+  });
+});
+
+var saveBtn=document.getElementById('settingsSaveBtn');
+if(saveBtn){
+  saveBtn.addEventListener('click',function(){
+    var active=document.querySelector('.settings-panel:not([hidden])');
+    if(!active) return;
+    var form=active.querySelector('form');
+    if(form) form.requestSubmit();
+  });
+}
+
+var avatarFile=document.getElementById('avatarFile');
+var avatarFileName=document.getElementById('avatarFileName');
+if(avatarFile){
+  avatarFile.addEventListener('change',function(){
+    avatarFileName.textContent='JPG, PNG не более 3 МБ';
+  });
+}
 </script>
 {% endblock %}
