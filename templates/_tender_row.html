@@ -9,7 +9,7 @@
       </div>
     </div>
     <div class="tmeta">
-      <span class="tdays {{ 'soon' if t.deadline_soon }}">{% if t.deadline_fmt != '—' %}до {{ t.deadline_fmt }}{% if t.days_fmt != '—' %} · {{ t.days_fmt }}{% endif %}{% else %}срок не указан{% endif %}</span>
+      <span class="tdays {{ 'soon' if t.deadline_soon }}">{{ t.time_left_fmt }}</span>
       <span class="tscore">{{ t.score }}% соответствие</span>
     </div>
   </a>

@@ -12,6 +12,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+import directions
+
 
 def _contains(text: str, term: str) -> bool:
     """
@@ -63,6 +65,8 @@ def score_tender(tender: dict, icp: dict) -> ScoreResult:
     text = _haystack(tender)
     reasons: list[str] = []
     labels: list[str] = []
+    direction = directions.classify(tender)
+    is_license = direction == "license"
 
     # ---------------- Жёсткие стоп-факторы -> сразу reject ---------------- #
     for stop in icp.get("stop_words", []):
@@ -75,23 +79,39 @@ def score_tender(tender: dict, icp: dict) -> ScoreResult:
             return ScoreResult(0, "reject", [f"Исключённый регион: {ex}"], ["регион исключён"])
 
     days_left = tender.get("days_left")
-    min_days = icp.get("min_days_left", 0)
-    if days_left is not None and days_left < min_days:
+    if days_left is not None and days_left < 0:
         return ScoreResult(
             0, "reject",
-            [f"До дедлайна {days_left} дн. — меньше минимума {min_days}"],
-            ["дедлайн прошёл/близко"],
+            ["Срок подачи заявок уже истёк"],
+            ["дедлайн прошёл"],
+        )
+    if days_left is not None and days_left <= 3 and not is_license:
+        return ScoreResult(
+            0, "reject",
+            [f"До дедлайна {days_left} дн. — такие закупки оставляем только для лицензий"],
+            ["дедлайн близко"],
         )
 
     price = tender.get("price_rub")
     bmin, bmax = icp.get("budget_min"), icp.get("budget_max")
-    if price and bmax and price > bmax:
-        return ScoreResult(0, "reject", [f"Бюджет {price:,} руб. выше максимума {bmax:,}"], ["бюджет велик"])
-    if price and bmin and price < bmin:
-        return ScoreResult(0, "reject", [f"Бюджет {price:,} руб. ниже минимума {bmin:,}"], ["бюджет мал"])
+    budget_too_high = bool(price and bmax and price > bmax)
+    budget_too_low = bool(price and bmin and price < bmin)
 
     weights = icp["weights"]
     score = 0.0
+
+    # Предметное соответствие — главный фактор после порога по обороту.
+    # Конкретный тег одновременно даёт понятное объяснение пользователю.
+    if direction != "other":
+        score += 40
+        reasons.append(f"Предмет закупки относится к направлению «{directions.name_of(direction)}»")
+        labels.append("профильное направление")
+
+    # Лицензии — отдельный приоритет заказчика. Короткий срок для них допустим.
+    if is_license:
+        score += 20
+        reasons.append("Лицензионная закупка — приоритетное и маржинальное направление")
+        labels.append("лицензия")
 
     # ---------------- Ключевые слова (главный фактор) ---------------- #
     # Вклад делится на две части, чтобы движок РАЗЛИЧАЛ уровень работы:
@@ -114,6 +134,10 @@ def score_tender(tender: dict, icp: dict) -> ScoreResult:
 
     # ---------------- Штраф за непрофиль (перепродажа/поставка) ---------------- #
     penalty_hits = [w for w in icp.get("keywords_penalty", {}) if _contains(text, w)]
+    if is_license:
+        # Для лицензионного направления поставка, продление, название продукта
+        # со словом Monitor и передача прав — нормальный предмет закупки.
+        penalty_hits = []
     if penalty_hits:
         penalty = sum(icp["keywords_penalty"][w] for w in penalty_hits)
         score -= penalty
@@ -132,6 +156,12 @@ def score_tender(tender: dict, icp: dict) -> ScoreResult:
     if price is None or price == 0:
         reasons.append("Начальная цена не указана — проверить вручную")
         labels.append("цена не указана")
+    elif budget_too_high:
+        reasons.append(f"Бюджет {price:,} руб. выше настроенного диапазона — это не стоп-фактор")
+        labels.append("бюджет велик")
+    elif budget_too_low:
+        reasons.append(f"Бюджет {price:,} руб. ниже настроенного диапазона — это не стоп-фактор")
+        labels.append("бюджет мал")
     elif bmin and bmax:
         score += weights["budget"]
         reasons.append(f"Бюджет {price:,} руб. — в рабочем диапазоне")
@@ -142,7 +172,10 @@ def score_tender(tender: dict, icp: dict) -> ScoreResult:
         if days_left >= 14:
             score += weights["deadline"]
             reasons.append(f"До дедлайна {days_left} дн. — времени достаточно")
-        elif days_left >= min_days:
+        elif is_license and days_left <= 3:
+            reasons.append(f"До дедлайна {days_left} дн., но для лицензии короткий срок допустим")
+            labels.append("срочная лицензия")
+        elif days_left > 3:
             score += weights["deadline"] * 0.5
             reasons.append(f"До дедлайна {days_left} дн. — время ограничено")
             labels.append("дедлайн близко")

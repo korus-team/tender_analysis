@@ -48,13 +48,72 @@
     <div class="field"><label>Электронная почта</label>
       <div class="email-wrap"><input name="email" id="emailInp" value="{{ s.email }}" placeholder="name@korusconsulting.ru"><button type="button" class="email-x" onclick="document.getElementById('emailInp').value=''" aria-label="Очистить"><svg class="icon"><use href="#i-close"/></svg></button></div>
     </div>
-    <div class="hint">Сама отправка на почту и работа по расписанию включатся после подключения почты (SMTP) и постоянного сервера.</div>
+    <button class="btn-take mine" type="submit" formaction="{{ url_for('settings_test_email') }}" style="margin-bottom:12px">Отправить тестовое письмо</button>
+    <div class="hint">
+      {% if smtp_ready %}
+        SMTP подключён. После загрузки Excel письмо о новых наиболее подходящих тендерах отправится автоматически.
+      {% else %}
+        Для отправки заполните SMTP-сервер, логин, пароль и адрес отправителя в файле <code>{{ smtp_env_path }}</code>. Поддерживаются SSL (обычно порт 465) и STARTTLS (обычно порт 587).
+      {% endif %}
+    </div>
   </div>
 </div>
 </form>
 
+<section class="account-section" id="account">
+  <div class="account-heading">
+    <div>
+      <h2>Учётная запись</h2>
+      <p>Фото профиля, логин и пароль для входа в приложение</p>
+    </div>
+  </div>
+  <form class="account-card" method="post" action="{{ url_for('settings_account') }}" enctype="multipart/form-data">
+    <div class="account-photo-col">
+      <div class="account-avatar">
+        {% if current_user and current_user.avatar_url %}
+          <img src="{{ current_user.avatar_url }}" alt="Фото профиля">
+        {% else %}
+          <span>{{ current_user.username[:1]|upper if current_user and current_user.username else 'U' }}</span>
+        {% endif %}
+      </div>
+      <label class="btn-label account-upload" for="avatarFile"><svg class="icon"><use href="#i-plus"/></svg>Выбрать фото</label>
+      <input id="avatarFile" type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
+      <div class="account-file-name" id="avatarFileName">PNG, JPG, GIF или WEBP · до 3 МБ</div>
+      {% if current_user and current_user.has_avatar %}
+      <label class="account-remove"><input type="checkbox" name="remove_avatar" value="1"> Удалить текущее фото</label>
+      {% endif %}
+    </div>
+
+    <div class="account-fields">
+      <div class="account-field account-field-wide">
+        <label for="accountUsername">Логин</label>
+        <input id="accountUsername" name="username" value="{{ current_user.username if current_user else '' }}" minlength="2" autocomplete="username" required>
+      </div>
+      <div class="account-divider"></div>
+      <div class="account-field">
+        <label for="newPassword">Новый пароль</label>
+        <input id="newPassword" type="password" name="new_password" minlength="4" autocomplete="new-password" placeholder="Оставьте пустым, если не меняете">
+      </div>
+      <div class="account-field">
+        <label for="passwordConfirm">Повторите новый пароль</label>
+        <input id="passwordConfirm" type="password" name="password_confirm" minlength="4" autocomplete="new-password" placeholder="Повторите новый пароль">
+      </div>
+      <div class="account-field account-field-wide">
+        <label for="currentPassword">Текущий пароль</label>
+        <input id="currentPassword" type="password" name="current_password" autocomplete="current-password" placeholder="Нужен для смены логина или пароля">
+        <div class="account-hint">Для замены только фотографии текущий пароль вводить не нужно.</div>
+      </div>
+      <div class="account-actions account-field-wide">
+        <button class="btn-take" type="submit">Сохранить данные</button>
+      </div>
+    </div>
+  </form>
+</section>
+
 <script>
 function toggleWins(){var f=document.getElementById('checkFreq').value;document.querySelectorAll('.win23').forEach(function(el){el.style.display=(f==='3'?'block':'none');});}
 toggleWins();
+var avatarFile=document.getElementById('avatarFile'), avatarFileName=document.getElementById('avatarFileName');
+if(avatarFile){avatarFile.addEventListener('change',function(){avatarFileName.textContent=this.files.length?this.files[0].name:'PNG, JPG, GIF или WEBP · до 3 МБ';});}
 </script>
 {% endblock %}

@@ -58,7 +58,9 @@ CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     username      TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,              -- хэш пароля (werkzeug), не сам пароль
-    created_at    TEXT
+    created_at    TEXT,
+    avatar        BLOB,                       -- фото профиля
+    avatar_mime   TEXT                        -- MIME-тип фото
 );
 
 
@@ -144,3 +146,46 @@ CREATE TABLE IF NOT EXISTS app_tasks (
     done         INTEGER DEFAULT 0,
     created_at   TEXT
 );
+
+
+-- ----------------------------------------------------------------------------
+-- Новые подходящие тендеры для колокольчика. Событие общее, а прочтение хранится
+-- отдельно для каждого пользователя.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS site_notifications (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_key    TEXT UNIQUE NOT NULL,
+    kind         TEXT NOT NULL,
+    tender_id    TEXT,
+    tender_title TEXT,
+    message      TEXT,
+    created_at   TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS site_notif_seen (
+    user_id         INTEGER NOT NULL,
+    notification_id INTEGER NOT NULL,
+    PRIMARY KEY (user_id, notification_id)
+);
+
+
+-- ----------------------------------------------------------------------------
+-- Очередь писем: сбой SMTP не отменяет импорт, письмо можно повторить позже.
+-- ----------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS email_outbox (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    event_key  TEXT UNIQUE NOT NULL,
+    kind       TEXT NOT NULL,
+    recipient  TEXT NOT NULL,
+    subject    TEXT NOT NULL,
+    text_body  TEXT NOT NULL,
+    html_body  TEXT NOT NULL,
+    status     TEXT NOT NULL DEFAULT 'pending',
+    attempts   INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    created_at TEXT NOT NULL,
+    sent_at    TEXT
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_outbox_status
+    ON email_outbox(status, attempts, id);

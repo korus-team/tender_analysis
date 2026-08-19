@@ -14,7 +14,7 @@ import re
 from datetime import datetime
 from functools import wraps
 
-from flask import (Flask, flash, redirect, render_template,
+from flask import (Flask, Response, abort, flash, redirect, render_template,
                    request, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -25,13 +25,16 @@ from main import run_ingest, rescore_all
 from enrich import enrich_pending
 from scoring import theme_score
 from icp_config import load_icp, save_icp
+from kontur_excel import KonturExcelError, import_kontur_xlsx
+import notification_service
 
 app = Flask(__name__)
 app.secret_key = "dar-tender-assistant-local"
+app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
 
 # --- пороги и настройки отображения -----------------------------------------
 RELEVANT_MIN = 60      # «подходит нашей компании»
-TOP_MIN = 85           # «наиболее подходящее»
+TOP_MIN = 70           # «наиболее подходящее»; числа вторичны, важнее теги и объяснение
 NOTIFY_MIN_SCORE = 60  # порог: уведомления только для тендеров с баллом не ниже
 INGEST_MAX_PAGES = 50  # сколько страниц собирать
 ENRICH_MIN_SCORE = 50  # какие тендеры обогащать
@@ -61,6 +64,50 @@ def _plural_days(n: int) -> str:
     if 2 <= d <= 4:
         return "дня"
     return "дней"
+
+
+def _plural_hours(n: int) -> str:
+    n = abs(n)
+    if 11 <= n % 100 <= 14:
+        return "часов"
+    d = n % 10
+    if d == 1:
+        return "час"
+    if 2 <= d <= 4:
+        return "часа"
+    return "часов"
+
+
+def _plural_minutes(n: int) -> str:
+    n = abs(n)
+    if 11 <= n % 100 <= 14:
+        return "минут"
+    d = n % 10
+    if d == 1:
+        return "минута"
+    if 2 <= d <= 4:
+        return "минуты"
+    return "минут"
+
+
+def _time_left_fmt(deadline: datetime | None, now: datetime) -> str:
+    """Человеческий остаток времени для списков тендеров."""
+    if deadline is None:
+        return "Срок не указан"
+    seconds = (deadline - now).total_seconds()
+    if seconds < 0:
+        return "Срок истёк"
+    if seconds < 3600:
+        minutes = max(1, math.ceil(seconds / 60))
+        verb = "Осталась" if minutes % 10 == 1 and minutes % 100 != 11 else "Осталось"
+        return f"{verb} {minutes} {_plural_minutes(minutes)}"
+    if seconds < 24 * 3600:
+        hours = max(1, math.ceil(seconds / 3600))
+        verb = "Остался" if hours % 10 == 1 and hours % 100 != 11 else "Осталось"
+        return f"{verb} {hours} {_plural_hours(hours)}"
+    days = max(1, int(seconds // (24 * 3600)))
+    verb = "Остался" if days % 10 == 1 and days % 100 != 11 else "Осталось"
+    return f"{verb} {days} {_plural_days(days)}"
 
 
 def _days_fmt(days) -> str:
@@ -192,18 +239,20 @@ def _annotate(tenders):
             if not isinstance(t.get(k), list):
                 t[k] = t.get(k) or []
         # дедлайн
-        days, dfmt = None, "—"
+        days, dfmt, deadline_dt = None, "—", None
         dl = t.get("deadline")
         if dl:
             try:
                 d = datetime.fromisoformat(dl)
+                deadline_dt = d
                 days = (d - now).days
-                dfmt = d.strftime("%d.%m.%Y")
+                dfmt = d.strftime("%d.%m.%Y · %H:%M")
             except (ValueError, TypeError):
                 pass
         t["days_left"] = days
         t["deadline_fmt"] = dfmt
         t["days_fmt"] = _days_fmt(days)
+        t["time_left_fmt"] = _time_left_fmt(deadline_dt, now)
         t["urgency"] = _urgency(days)
         # тип закупки (предметный тег)
         t["direction"] = directions.classify(t)
@@ -214,7 +263,7 @@ def _annotate(tenders):
                               and t["direction"] != "license")
         # коммерческая / государственная (по наличию номера в ЕИС)
         det = t.get("details") if isinstance(t.get("details"), dict) else {}
-        if det and det.get("eis_number"):
+        if det and (det.get("eis_number") or det.get("eis_url")):
             t["ptype"], t["ptype_label"] = "gov", "Госзакупка (ФЗ)"
         elif t.get("enriched_at"):
             t["ptype"], t["ptype_label"] = "com", "Коммерческая"
@@ -296,7 +345,14 @@ def _ensure_auth_tables():
         "id INTEGER PRIMARY KEY AUTOINCREMENT, "
         "username TEXT UNIQUE NOT NULL, "
         "password_hash TEXT NOT NULL, "
-        "created_at TEXT)")
+        "created_at TEXT, "
+        "avatar BLOB, "
+        "avatar_mime TEXT)")
+    user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+    if "avatar" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN avatar BLOB")
+    if "avatar_mime" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN avatar_mime TEXT")
     conn.execute(
         "CREATE TABLE IF NOT EXISTS user_favorites ("
         "user_id INTEGER NOT NULL, "
@@ -324,7 +380,37 @@ def current_user():
     uid = session.get("user_id")
     if not uid:
         return None
-    return {"id": uid, "username": session.get("username", "")}
+    if "has_avatar" not in session:
+        conn = storage.connect()
+        row = conn.execute(
+            "SELECT username, avatar_mime FROM users WHERE id = ?", (uid,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            session.clear()
+            return None
+        session["username"] = row["username"]
+        session["has_avatar"] = bool(row["avatar_mime"])
+    has_avatar = bool(session.get("has_avatar"))
+    return {
+        "id": uid,
+        "username": session.get("username", ""),
+        "has_avatar": has_avatar,
+        "avatar_url": url_for("user_avatar", user_id=uid) if has_avatar else None,
+    }
+
+
+def _image_mime(data: bytes) -> str | None:
+    """Определяет поддерживаемый тип изображения по содержимому, а не расширению."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 
 
 def _claimed_ids(conn):
@@ -380,7 +466,8 @@ def _is_relevant_eff(t, rel_map):
         return True
     if ov == "irrelevant":
         return False
-    return directions.is_relevant(t)
+    return (directions.is_relevant(t) and
+            int(t.get("score") or 0) >= RELEVANT_MIN)
 
 
 # --- приоритетные компании (заменяют «профиль компании») ---
@@ -503,6 +590,12 @@ _ensure_auth_tables()
 _ensure_meta_table()
 _ensure_priorities_table()
 _ensure_settings_table()
+_notification_conn = storage.connect()
+notification_service.ensure_schema(_notification_conn)
+notification_service.prune_ineligible_site_notifications(
+    _notification_conn, relevant_min=RELEVANT_MIN
+)
+_notification_conn.close()
 
 
 @app.before_request
@@ -522,7 +615,7 @@ def inject_globals():
 
 @app.context_processor
 def inject_notifications():
-    """Уведомления: события «сотрудник взял тендер в работу» (свои не показываем)."""
+    """Общий колокольчик: новые тендеры и действия сотрудников без дублей."""
     try:
         uid = session.get("user_id")
         if not uid:
@@ -530,29 +623,47 @@ def inject_notifications():
                     "my_fav_ids": set(), "taken_by": {}}
         here = request.path
         conn = storage.connect()
-        events = conn.execute(
-            "SELECT n.id, n.actor_name, n.tender_id, n.tender_title "
+        favorite_events = conn.execute(
+            "SELECT n.id, n.actor_name, n.tender_id, n.tender_title, n.created_at "
             "FROM fav_notifications n "
             "JOIN user_favorites f ON f.tender_id = n.tender_id AND f.user_id = n.actor_id "
             "WHERE n.actor_id != ? ORDER BY n.id DESC LIMIT 40", (uid,)).fetchall()
-        seen = {r[0] for r in conn.execute(
+        favorite_seen = {r[0] for r in conn.execute(
             "SELECT notif_id FROM notif_seen WHERE user_id = ?", (uid,))}
+        site_events = conn.execute(
+            "SELECT id, kind, tender_id, tender_title, message, created_at "
+            "FROM site_notifications ORDER BY id DESC LIMIT 40"
+        ).fetchall()
+        site_seen = {r[0] for r in conn.execute(
+            "SELECT notification_id FROM site_notif_seen WHERE user_id = ?", (uid,))}
         my_favs = _my_fav_ids(conn, uid)
         taken_by = {r["tender_id"]: r["username"] for r in conn.execute(
             "SELECT f.tender_id, u.username FROM user_favorites f "
             "JOIN users u ON u.id = f.user_id")}
         conn.close()
         notes = []
-        for e in events:
+        for e in favorite_events:
             nid = e["id"]
             target = url_for("tender", tender_id=e["tender_id"], ret=here)
             notes.append({
-                "id": nid,
+                "id": nid, "created_at": e["created_at"] or "", "icon": "i-heart",
                 "title": e["tender_title"] or "Тендер",
                 "meta": f"{e['actor_name'] or 'Сотрудник'} взял(а) в работу",
-                "url": url_for("notif_read", id=nid, to=target),
-                "read": nid in seen,
+                "url": url_for("notif_read", id=nid, source="favorite", to=target),
+                "read": nid in favorite_seen,
             })
+        for e in site_events:
+            nid = e["id"]
+            target = url_for("tender", tender_id=e["tender_id"], ret=here)
+            notes.append({
+                "id": nid, "created_at": e["created_at"] or "", "icon": "i-search",
+                "title": e["tender_title"] or "Новый тендер",
+                "meta": e["message"] or "Новый подходящий тендер",
+                "url": url_for("notif_read", id=nid, source="site", to=target),
+                "read": nid in site_seen,
+            })
+        notes.sort(key=lambda note: note["created_at"], reverse=True)
+        notes = notes[:40]
         return {"notifications": notes,
                 "notif_count": sum(1 for n in notes if not n["read"]),
                 "my_fav_ids": my_favs, "taken_by": taken_by}
@@ -577,6 +688,7 @@ def login():
         if row and check_password_hash(row["password_hash"], password):
             session["user_id"] = row["id"]
             session["username"] = row["username"]
+            session["has_avatar"] = bool(row["avatar_mime"])
             return redirect(url_for("home"))
         flash("Неверный логин или пароль", "err")
         return redirect(url_for("login"))
@@ -606,6 +718,7 @@ def register():
         conn.close()
         session["user_id"] = row["id"]
         session["username"] = row["username"]
+        session["has_avatar"] = bool(row["avatar_mime"])
         return redirect(url_for("home"))
     return render_template("register.html")
 
@@ -625,14 +738,13 @@ def home():
     direction = request.args.get("direction") or None
     ptype = request.args.get("ptype") or None
     q = (request.args.get("q") or "").strip()
-    sort = request.args.get("sort") or "ai"
+    sort = request.args.get("sort") or "deadline"
     show = request.args.get("show") or "all"
     show_filters = request.args.get("filters") == "1"
     page = request.args.get("page", type=int) or 1
 
     rel_map, not_pursued = _load_meta(conn)
     pindex = _priority_index(conn)
-    prio_companies = conn.execute("SELECT COUNT(*) FROM priority_companies").fetchone()[0]
     rows = _annotate(storage.query_tenders(conn, limit=None))
     rows = [t for t in rows
             if company_size.passes_revenue(t.get("customer")) and _not_expired(t)
@@ -642,21 +754,12 @@ def home():
     for t in rows:
         t["is_priority"] = _is_priority(t.get("customer"), pindex)
         t["law"] = _law_tag(t)
-        t["warn"] = None
-        dl = t.get("deadline")
-        if dl:
-            try:
-                secs = (datetime.fromisoformat(dl) - datetime.now()).total_seconds()
-                if 0 <= secs < 24 * 3600 and not t.get("is_license"):
-                    h = int(secs // 3600)
-                    t["warn"] = "Меньше часа" if h < 1 else f"Меньше {h + 1} часов"
-            except (ValueError, TypeError):
-                pass
 
     # счётчики (по всей отобранной выборке, до фильтров)
     stat_total = len(rows)
     stat_top = sum(1 for t in rows if (t.get("score") or 0) >= TOP_MIN)
     stat_lic = sum(1 for t in rows if t.get("is_license"))
+    stat_priority = sum(1 for t in rows if t.get("is_priority"))
 
     # фильтры
     view = rows
@@ -695,7 +798,7 @@ def home():
     return render_template(
         "home.html", active="home", now=datetime.now().strftime("%d.%m %H:%M"),
         stat_total=stat_total, stat_top=stat_top, stat_lic=stat_lic,
-        prio_companies=prio_companies, tenders=page_rows,
+        stat_priority=stat_priority, tenders=page_rows,
         direction=direction, ptype=ptype, q=q, sort=sort, show=show, show_filters=show_filters,
         type_keys=directions.all_keys(include_other=False), dir_name=directions.name_of,
         total_found=total_found, page=page, total_pages=total_pages)
@@ -1072,6 +1175,8 @@ def _load_settings():
     conn.close()
     s = dict(SETTINGS_DEFAULTS)
     s.update(saved)
+    if not (s.get("email") or "").strip():
+        s["email"] = notification_service.smtp_config()["recipient"]
     return s
 
 
@@ -1092,7 +1197,115 @@ def settings():
         flash("Настройки сохранены")
         return redirect(url_for("settings"))
     return render_template("settings.html", active="settings", s=_load_settings(),
+                           smtp_ready=notification_service.smtp_ready(),
+                           smtp_env_path=str(notification_service.ENV_PATH),
                            windows=["В 8 – 9", "В 9 – 10", "В 12 – 13", "В 16 – 17", "В 18 – 19"])
+
+
+@app.route("/settings/account", methods=["POST"])
+def settings_account():
+    """Обновляет фото, логин и пароль текущего пользователя."""
+    uid = session["user_id"]
+    username = (request.form.get("username") or "").strip()
+    current_password = request.form.get("current_password") or ""
+    new_password = request.form.get("new_password") or ""
+    password_confirm = request.form.get("password_confirm") or ""
+    remove_avatar = request.form.get("remove_avatar") == "1"
+    upload = request.files.get("avatar")
+
+    conn = storage.connect()
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+    if not user:
+        conn.close()
+        session.clear()
+        return redirect(url_for("login"))
+
+    username_changed = username != user["username"]
+    password_changed = bool(new_password or password_confirm)
+    if len(username) < 2:
+        conn.close()
+        flash("Логин должен содержать не менее 2 символов", "err")
+        return redirect(url_for("settings") + "#account")
+    if username_changed or password_changed:
+        if not current_password or not check_password_hash(user["password_hash"], current_password):
+            conn.close()
+            flash("Чтобы изменить логин или пароль, укажите текущий пароль", "err")
+            return redirect(url_for("settings") + "#account")
+    if password_changed:
+        if len(new_password) < 4:
+            conn.close()
+            flash("Новый пароль должен содержать не менее 4 символов", "err")
+            return redirect(url_for("settings") + "#account")
+        if new_password != password_confirm:
+            conn.close()
+            flash("Новый пароль и подтверждение не совпадают", "err")
+            return redirect(url_for("settings") + "#account")
+    if username_changed and conn.execute(
+            "SELECT 1 FROM users WHERE username = ? AND id <> ?", (username, uid)
+    ).fetchone():
+        conn.close()
+        flash("Такой логин уже занят", "err")
+        return redirect(url_for("settings") + "#account")
+
+    avatar_data = None
+    avatar_mime = None
+    avatar_changed = False
+    if upload and upload.filename:
+        avatar_data = upload.read(3 * 1024 * 1024 + 1)
+        if len(avatar_data) > 3 * 1024 * 1024:
+            conn.close()
+            flash("Фото профиля должно быть не больше 3 МБ", "err")
+            return redirect(url_for("settings") + "#account")
+        avatar_mime = _image_mime(avatar_data)
+        if not avatar_mime:
+            conn.close()
+            flash("Поддерживаются фотографии PNG, JPG, GIF и WEBP", "err")
+            return redirect(url_for("settings") + "#account")
+        avatar_changed = True
+
+    updates = ["username = ?"]
+    values = [username]
+    if password_changed:
+        updates.append("password_hash = ?")
+        values.append(generate_password_hash(new_password))
+    if remove_avatar:
+        updates.extend(["avatar = NULL", "avatar_mime = NULL"])
+    elif avatar_changed:
+        updates.extend(["avatar = ?", "avatar_mime = ?"])
+        values.extend([avatar_data, avatar_mime])
+    values.append(uid)
+    conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", values)
+    conn.commit()
+    saved = conn.execute("SELECT username, avatar_mime FROM users WHERE id = ?", (uid,)).fetchone()
+    conn.close()
+    session["username"] = saved["username"]
+    session["has_avatar"] = bool(saved["avatar_mime"])
+    flash("Данные учётной записи сохранены")
+    return redirect(url_for("settings") + "#account")
+
+
+@app.route("/user/<int:user_id>/avatar")
+def user_avatar(user_id):
+    conn = storage.connect()
+    row = conn.execute("SELECT avatar, avatar_mime FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    if not row or not row["avatar"] or not row["avatar_mime"]:
+        abort(404)
+    response = Response(bytes(row["avatar"]), mimetype=row["avatar_mime"])
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
+@app.route("/settings/test-email", methods=["POST"])
+def settings_test_email():
+    """Проверяет локальные SMTP-настройки отдельным безопасным письмом."""
+    recipient = (request.form.get("email") or _load_settings().get("email") or "").strip()
+    try:
+        notification_service.send_test_email(recipient)
+        flash(f"Тестовое письмо отправлено на {recipient}")
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Не удалось отправить тестовое письмо: {exc}", "err")
+    return redirect(url_for("settings"))
 
 
 # ============================================================================
@@ -1193,20 +1406,50 @@ def toggle_not_pursued(tender_id):
 def ingest():
     """Одна кнопка: собрать из всех источников (с фильтром 10 млрд ₽) и обогатить."""
     try:
-        s = run_ingest(max_pages=INGEST_MAX_PAGES, use_llm=False, write_json=True)
-        if isinstance(s, dict):
-            parts = [f"новых {s.get('new', 0)}"]
-            if s.get("relevant") is not None:
-                parts.append(f"профильных {s['relevant']}")
-            if s.get("expired_removed"):
-                parts.append(f"удалено просроченных {s['expired_removed']}")
-            if s.get("enriched") is not None:
-                parts.append(f"обогащено {s['enriched']}")
-            flash("Сбор и обогащение завершены: " + ", ".join(parts))
-        else:
-            flash("Сбор завершён")
+        run_ingest(max_pages=INGEST_MAX_PAGES, use_llm=False, write_json=True)
     except Exception as e:  # noqa: BLE001
         flash(f"Ошибка сбора: {e}", "err")
+    return redirect(request.referrer or url_for("home"))
+
+
+@app.route("/import/kontur", methods=["POST"])
+def import_kontur():
+    """Загрузка Excel-выгрузки Контур.Закупок через общий конвейер скоринга."""
+    upload = request.files.get("kontur_file")
+    if not upload or not upload.filename:
+        flash("Выберите Excel-файл Контур.Закупок", "err")
+        return redirect(request.referrer or url_for("home"))
+    if not upload.filename.lower().endswith(".xlsx"):
+        flash("Поддерживаются только выгрузки Контур.Закупок в формате .xlsx", "err")
+        return redirect(request.referrer or url_for("home"))
+
+    try:
+        summary = import_kontur_xlsx(upload.stream)
+        current_settings = _load_settings()
+        smtp = notification_service.smtp_config()
+        notification_conn = storage.connect()
+        try:
+            notification_summary = notification_service.create_new_tender_notifications(
+                notification_conn,
+                summary.get("new_ids", []),
+                site_enabled=current_settings["n_new_site"] == "1",
+                email_enabled=current_settings["n_new_email"] == "1",
+                recipient=current_settings.get("email") or smtp["recipient"],
+                base_url=smtp["base_url"],
+                relevant_min=RELEVANT_MIN,
+                top_min=TOP_MIN,
+            )
+        finally:
+            notification_conn.close()
+        delivery = ({"sent": 0, "failed": 0}
+                    if current_settings["n_new_email"] != "1"
+                    else notification_service.dispatch_email_outbox())
+        if delivery.get("failed") and not delivery.get("config_error"):
+            flash("Тендеры загружены, но письмо осталось в очереди из-за ошибки отправки", "err")
+    except KonturExcelError as exc:
+        flash(str(exc), "err")
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Ошибка импорта Контур.Закупок: {exc}", "err")
     return redirect(request.referrer or url_for("home"))
 
 
@@ -1306,8 +1549,14 @@ def notif_read():
     uid = session.get("user_id")
     if nid and uid:
         conn = storage.connect()
-        conn.execute("INSERT OR IGNORE INTO notif_seen (user_id, notif_id) VALUES (?, ?)",
-                     (uid, nid))
+        if request.args.get("source") == "site":
+            conn.execute(
+                "INSERT OR IGNORE INTO site_notif_seen (user_id, notification_id) VALUES (?, ?)",
+                (uid, nid),
+            )
+        else:
+            conn.execute("INSERT OR IGNORE INTO notif_seen (user_id, notif_id) VALUES (?, ?)",
+                         (uid, nid))
         conn.commit()
         conn.close()
     if to.startswith("/") and not to.startswith("//") and "\\" not in to:
