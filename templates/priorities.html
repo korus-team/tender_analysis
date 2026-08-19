@@ -29,8 +29,8 @@
       <div class="prio-add-title">Добавить компанию</div>
     </div>
     <div class="prio-add-form">
-      <form method="post" action="{{ url_for('priorities_add') }}" style="flex:1"><input class="prio-input" name="name" placeholder="По ИНН или названию..."></form>
-      <form method="post" action="{{ url_for('priorities_import') }}" enctype="multipart/form-data"><label class="prio-excel" style="display:grid;place-items:center;height:100%"><input type="file" name="file" accept=".xlsx,.xls" hidden onchange="this.form.submit()">из Excel</label></form>
+      <form method="post" action="{{ url_for('priorities_add') }}" style="min-width:0"><input class="prio-input" name="name" placeholder="По ИНН или названию..."></form>
+      <form method="post" action="{{ url_for('priorities_import') }}" enctype="multipart/form-data" style="width:100%"><label class="prio-excel" style="display:grid;place-items:center;height:100%"><input type="file" name="file" accept=".xlsx,.xls" hidden onchange="this.form.submit()">из Excel</label></form>
     </div>
 
     {% for sg in suggestions %}
@@ -47,7 +47,7 @@
 <style>
 .prio-wrap{display:grid;grid-template-columns:1fr 340px;gap:22px;align-items:start}
 .prio-row{display:flex;align-items:center;gap:16px;background:#fff;border:1px solid var(--border-2);border-radius:16px;padding:16px 20px;margin-bottom:12px}
-.prio-idx{width:46px;height:46px;border-radius:50%;background:#F4E7A0;color:#4A3B08;font-weight:800;font-size:17px;display:grid;place-items:center;flex-shrink:0}
+.prio-idx{width:46px;height:46px;border-radius:50%;background:#FFEAAC;color:#000000;font-weight:800;font-size:17px;display:grid;place-items:center;flex-shrink:0}
 .prio-info{flex:1;min-width:0}
 .prio-name{font-weight:600;font-size:16px}
 .prio-inn{color:var(--text-2);font-size:14px;margin-top:2px}
@@ -57,18 +57,18 @@
 /* тёмная панель добавления */
 .prio-add{background:#2B2E34;border-radius:20px;padding:20px;position:sticky;top:20px}
 .prio-add-title{color:#fff;font-weight:700;font-size:17px;margin-bottom:14px}
-.prio-add-form{display:flex;gap:8px;margin-bottom:10px}
-.prio-input{flex:1;border:1px solid #45484F;background:#3A3D44;color:#fff;border-radius:11px;padding:11px 13px;font-family:inherit;font-size:14px}
+.prio-add-form{display:grid;grid-template-columns:minmax(0,1fr) 110px;gap:8px;margin-bottom:12px;align-items:stretch}
+.prio-input{width:100%;height:46px;border:1px solid #55585F;background:#3A3D44;color:#fff;border-radius:11px;padding:11px 13px;font-family:inherit;font-size:14px}
 .prio-input::placeholder{color:#9198A0}
-.prio-excel{background:#3A3D44;color:#E7EAEE;border:1px solid #55585F;border-radius:11px;padding:0 16px;font-family:inherit;font-weight:600;font-size:14px;cursor:pointer;white-space:nowrap}
+.prio-excel{width:100%;height:46px;background:#3A3D44;color:#9198A0;border:1px solid #55585F;border-radius:11px;padding:0 12px;font-family:inherit;font-weight:500;font-size:14px;cursor:pointer;white-space:nowrap}
 .prio-excel-form{margin-bottom:16px}
 .prio-file{display:block;border:1px dashed #55585F;border-radius:11px;padding:10px;text-align:center;color:#C7CBD1;font-size:14px;cursor:pointer}
 .prio-file:hover{background:#33363C}
-.prio-sugg{display:flex;align-items:center;gap:12px;background:#34373D;border-radius:14px;padding:13px 15px;margin-bottom:10px}
+.prio-sugg{display:flex;align-items:center;gap:12px;background:#34373D;border:1px solid #55585F;border-radius:14px;padding:13px 15px;margin-bottom:10px}
 .prio-sugg-info{flex:1;min-width:0}
 .prio-sugg-name{color:#fff;font-weight:600;font-size:14.5px}
 .prio-sugg-inn{color:#9198A0;font-size:12.5px;margin-top:2px}
-.prio-sugg-add{width:38px;height:38px;border-radius:50%;background:#F4E7A0;color:#4A3B08;border:none;cursor:pointer;display:grid;place-items:center;flex-shrink:0}
+.prio-sugg-add{width:38px;height:38px;border-radius:50%;background:#FFEAAC;color:#000000;border:none;cursor:pointer;display:grid;place-items:center;flex-shrink:0}
 .prio-sugg-add .icon{width:20px;height:20px}
 .prio-hint{color:#9198A0;font-size:12px;margin-top:12px}
 @media (max-width:900px){.prio-wrap{grid-template-columns:1fr}}
