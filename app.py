@@ -14,7 +14,7 @@ import re
 from datetime import datetime
 from functools import wraps
 
-from flask import (Flask, flash, redirect, render_template,
+from flask import (Flask, Response, abort, flash, redirect, render_template,
                    request, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -64,6 +64,50 @@ def _plural_days(n: int) -> str:
     if 2 <= d <= 4:
         return "дня"
     return "дней"
+
+
+def _plural_hours(n: int) -> str:
+    n = abs(n)
+    if 11 <= n % 100 <= 14:
+        return "часов"
+    d = n % 10
+    if d == 1:
+        return "час"
+    if 2 <= d <= 4:
+        return "часа"
+    return "часов"
+
+
+def _plural_minutes(n: int) -> str:
+    n = abs(n)
+    if 11 <= n % 100 <= 14:
+        return "минут"
+    d = n % 10
+    if d == 1:
+        return "минута"
+    if 2 <= d <= 4:
+        return "минуты"
+    return "минут"
+
+
+def _time_left_fmt(deadline: datetime | None, now: datetime) -> str:
+    """Человеческий остаток времени для списков тендеров."""
+    if deadline is None:
+        return "Срок не указан"
+    seconds = (deadline - now).total_seconds()
+    if seconds < 0:
+        return "Срок истёк"
+    if seconds < 3600:
+        minutes = max(1, math.ceil(seconds / 60))
+        verb = "Осталась" if minutes % 10 == 1 and minutes % 100 != 11 else "Осталось"
+        return f"{verb} {minutes} {_plural_minutes(minutes)}"
+    if seconds < 24 * 3600:
+        hours = max(1, math.ceil(seconds / 3600))
+        verb = "Остался" if hours % 10 == 1 and hours % 100 != 11 else "Осталось"
+        return f"{verb} {hours} {_plural_hours(hours)}"
+    days = max(1, int(seconds // (24 * 3600)))
+    verb = "Остался" if days % 10 == 1 and days % 100 != 11 else "Осталось"
+    return f"{verb} {days} {_plural_days(days)}"
 
 
 def _days_fmt(days) -> str:
@@ -195,18 +239,20 @@ def _annotate(tenders):
             if not isinstance(t.get(k), list):
                 t[k] = t.get(k) or []
         # дедлайн
-        days, dfmt = None, "—"
+        days, dfmt, deadline_dt = None, "—", None
         dl = t.get("deadline")
         if dl:
             try:
                 d = datetime.fromisoformat(dl)
+                deadline_dt = d
                 days = (d - now).days
-                dfmt = d.strftime("%d.%m.%Y")
+                dfmt = d.strftime("%d.%m.%Y · %H:%M")
             except (ValueError, TypeError):
                 pass
         t["days_left"] = days
         t["deadline_fmt"] = dfmt
         t["days_fmt"] = _days_fmt(days)
+        t["time_left_fmt"] = _time_left_fmt(deadline_dt, now)
         t["urgency"] = _urgency(days)
         # тип закупки (предметный тег)
         t["direction"] = directions.classify(t)
@@ -299,7 +345,14 @@ def _ensure_auth_tables():
         "id INTEGER PRIMARY KEY AUTOINCREMENT, "
         "username TEXT UNIQUE NOT NULL, "
         "password_hash TEXT NOT NULL, "
-        "created_at TEXT)")
+        "created_at TEXT, "
+        "avatar BLOB, "
+        "avatar_mime TEXT)")
+    user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
+    if "avatar" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN avatar BLOB")
+    if "avatar_mime" not in user_columns:
+        conn.execute("ALTER TABLE users ADD COLUMN avatar_mime TEXT")
     conn.execute(
         "CREATE TABLE IF NOT EXISTS user_favorites ("
         "user_id INTEGER NOT NULL, "
@@ -327,7 +380,37 @@ def current_user():
     uid = session.get("user_id")
     if not uid:
         return None
-    return {"id": uid, "username": session.get("username", "")}
+    if "has_avatar" not in session:
+        conn = storage.connect()
+        row = conn.execute(
+            "SELECT username, avatar_mime FROM users WHERE id = ?", (uid,)
+        ).fetchone()
+        conn.close()
+        if not row:
+            session.clear()
+            return None
+        session["username"] = row["username"]
+        session["has_avatar"] = bool(row["avatar_mime"])
+    has_avatar = bool(session.get("has_avatar"))
+    return {
+        "id": uid,
+        "username": session.get("username", ""),
+        "has_avatar": has_avatar,
+        "avatar_url": url_for("user_avatar", user_id=uid) if has_avatar else None,
+    }
+
+
+def _image_mime(data: bytes) -> str | None:
+    """Определяет поддерживаемый тип изображения по содержимому, а не расширению."""
+    if data.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if data.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if data.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if len(data) >= 12 and data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+        return "image/webp"
+    return None
 
 
 def _claimed_ids(conn):
@@ -383,7 +466,8 @@ def _is_relevant_eff(t, rel_map):
         return True
     if ov == "irrelevant":
         return False
-    return directions.is_relevant(t)
+    return (directions.is_relevant(t) and
+            int(t.get("score") or 0) >= RELEVANT_MIN)
 
 
 # --- приоритетные компании (заменяют «профиль компании») ---
@@ -508,6 +592,9 @@ _ensure_priorities_table()
 _ensure_settings_table()
 _notification_conn = storage.connect()
 notification_service.ensure_schema(_notification_conn)
+notification_service.prune_ineligible_site_notifications(
+    _notification_conn, relevant_min=RELEVANT_MIN
+)
 _notification_conn.close()
 
 
@@ -601,6 +688,7 @@ def login():
         if row and check_password_hash(row["password_hash"], password):
             session["user_id"] = row["id"]
             session["username"] = row["username"]
+            session["has_avatar"] = bool(row["avatar_mime"])
             return redirect(url_for("home"))
         flash("Неверный логин или пароль", "err")
         return redirect(url_for("login"))
@@ -630,6 +718,7 @@ def register():
         conn.close()
         session["user_id"] = row["id"]
         session["username"] = row["username"]
+        session["has_avatar"] = bool(row["avatar_mime"])
         return redirect(url_for("home"))
     return render_template("register.html")
 
@@ -656,7 +745,6 @@ def home():
 
     rel_map, not_pursued = _load_meta(conn)
     pindex = _priority_index(conn)
-    prio_companies = conn.execute("SELECT COUNT(*) FROM priority_companies").fetchone()[0]
     rows = _annotate(storage.query_tenders(conn, limit=None))
     rows = [t for t in rows
             if company_size.passes_revenue(t.get("customer")) and _not_expired(t)
@@ -666,21 +754,12 @@ def home():
     for t in rows:
         t["is_priority"] = _is_priority(t.get("customer"), pindex)
         t["law"] = _law_tag(t)
-        t["warn"] = None
-        dl = t.get("deadline")
-        if dl:
-            try:
-                secs = (datetime.fromisoformat(dl) - datetime.now()).total_seconds()
-                if 0 <= secs < 24 * 3600 and not t.get("is_license"):
-                    h = int(secs // 3600)
-                    t["warn"] = "Меньше часа" if h < 1 else f"Меньше {h + 1} часов"
-            except (ValueError, TypeError):
-                pass
 
     # счётчики (по всей отобранной выборке, до фильтров)
     stat_total = len(rows)
     stat_top = sum(1 for t in rows if (t.get("score") or 0) >= TOP_MIN)
     stat_lic = sum(1 for t in rows if t.get("is_license"))
+    stat_priority = sum(1 for t in rows if t.get("is_priority"))
 
     # фильтры
     view = rows
@@ -719,7 +798,7 @@ def home():
     return render_template(
         "home.html", active="home", now=datetime.now().strftime("%d.%m %H:%M"),
         stat_total=stat_total, stat_top=stat_top, stat_lic=stat_lic,
-        prio_companies=prio_companies, tenders=page_rows,
+        stat_priority=stat_priority, tenders=page_rows,
         direction=direction, ptype=ptype, q=q, sort=sort, show=show, show_filters=show_filters,
         type_keys=directions.all_keys(include_other=False), dir_name=directions.name_of,
         total_found=total_found, page=page, total_pages=total_pages)
@@ -1123,6 +1202,100 @@ def settings():
                            windows=["В 8 – 9", "В 9 – 10", "В 12 – 13", "В 16 – 17", "В 18 – 19"])
 
 
+@app.route("/settings/account", methods=["POST"])
+def settings_account():
+    """Обновляет фото, логин и пароль текущего пользователя."""
+    uid = session["user_id"]
+    username = (request.form.get("username") or "").strip()
+    current_password = request.form.get("current_password") or ""
+    new_password = request.form.get("new_password") or ""
+    password_confirm = request.form.get("password_confirm") or ""
+    remove_avatar = request.form.get("remove_avatar") == "1"
+    upload = request.files.get("avatar")
+
+    conn = storage.connect()
+    user = conn.execute("SELECT * FROM users WHERE id = ?", (uid,)).fetchone()
+    if not user:
+        conn.close()
+        session.clear()
+        return redirect(url_for("login"))
+
+    username_changed = username != user["username"]
+    password_changed = bool(new_password or password_confirm)
+    if len(username) < 2:
+        conn.close()
+        flash("Логин должен содержать не менее 2 символов", "err")
+        return redirect(url_for("settings") + "#account")
+    if username_changed or password_changed:
+        if not current_password or not check_password_hash(user["password_hash"], current_password):
+            conn.close()
+            flash("Чтобы изменить логин или пароль, укажите текущий пароль", "err")
+            return redirect(url_for("settings") + "#account")
+    if password_changed:
+        if len(new_password) < 4:
+            conn.close()
+            flash("Новый пароль должен содержать не менее 4 символов", "err")
+            return redirect(url_for("settings") + "#account")
+        if new_password != password_confirm:
+            conn.close()
+            flash("Новый пароль и подтверждение не совпадают", "err")
+            return redirect(url_for("settings") + "#account")
+    if username_changed and conn.execute(
+            "SELECT 1 FROM users WHERE username = ? AND id <> ?", (username, uid)
+    ).fetchone():
+        conn.close()
+        flash("Такой логин уже занят", "err")
+        return redirect(url_for("settings") + "#account")
+
+    avatar_data = None
+    avatar_mime = None
+    avatar_changed = False
+    if upload and upload.filename:
+        avatar_data = upload.read(3 * 1024 * 1024 + 1)
+        if len(avatar_data) > 3 * 1024 * 1024:
+            conn.close()
+            flash("Фото профиля должно быть не больше 3 МБ", "err")
+            return redirect(url_for("settings") + "#account")
+        avatar_mime = _image_mime(avatar_data)
+        if not avatar_mime:
+            conn.close()
+            flash("Поддерживаются фотографии PNG, JPG, GIF и WEBP", "err")
+            return redirect(url_for("settings") + "#account")
+        avatar_changed = True
+
+    updates = ["username = ?"]
+    values = [username]
+    if password_changed:
+        updates.append("password_hash = ?")
+        values.append(generate_password_hash(new_password))
+    if remove_avatar:
+        updates.extend(["avatar = NULL", "avatar_mime = NULL"])
+    elif avatar_changed:
+        updates.extend(["avatar = ?", "avatar_mime = ?"])
+        values.extend([avatar_data, avatar_mime])
+    values.append(uid)
+    conn.execute(f"UPDATE users SET {', '.join(updates)} WHERE id = ?", values)
+    conn.commit()
+    saved = conn.execute("SELECT username, avatar_mime FROM users WHERE id = ?", (uid,)).fetchone()
+    conn.close()
+    session["username"] = saved["username"]
+    session["has_avatar"] = bool(saved["avatar_mime"])
+    flash("Данные учётной записи сохранены")
+    return redirect(url_for("settings") + "#account")
+
+
+@app.route("/user/<int:user_id>/avatar")
+def user_avatar(user_id):
+    conn = storage.connect()
+    row = conn.execute("SELECT avatar, avatar_mime FROM users WHERE id = ?", (user_id,)).fetchone()
+    conn.close()
+    if not row or not row["avatar"] or not row["avatar_mime"]:
+        abort(404)
+    response = Response(bytes(row["avatar"]), mimetype=row["avatar_mime"])
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 @app.route("/settings/test-email", methods=["POST"])
 def settings_test_email():
     """Проверяет локальные SMTP-настройки отдельным безопасным письмом."""
@@ -1233,18 +1406,7 @@ def toggle_not_pursued(tender_id):
 def ingest():
     """Одна кнопка: собрать из всех источников (с фильтром 10 млрд ₽) и обогатить."""
     try:
-        s = run_ingest(max_pages=INGEST_MAX_PAGES, use_llm=False, write_json=True)
-        if isinstance(s, dict):
-            parts = [f"новых {s.get('new', 0)}"]
-            if s.get("relevant") is not None:
-                parts.append(f"профильных {s['relevant']}")
-            if s.get("expired_removed"):
-                parts.append(f"удалено просроченных {s['expired_removed']}")
-            if s.get("enriched") is not None:
-                parts.append(f"обогащено {s['enriched']}")
-            flash("Сбор и обогащение завершены: " + ", ".join(parts))
-        else:
-            flash("Сбор завершён")
+        run_ingest(max_pages=INGEST_MAX_PAGES, use_llm=False, write_json=True)
     except Exception as e:  # noqa: BLE001
         flash(f"Ошибка сбора: {e}", "err")
     return redirect(request.referrer or url_for("home"))
@@ -1274,6 +1436,7 @@ def import_kontur():
                 email_enabled=current_settings["n_new_email"] == "1",
                 recipient=current_settings.get("email") or smtp["recipient"],
                 base_url=smtp["base_url"],
+                relevant_min=RELEVANT_MIN,
                 top_min=TOP_MIN,
             )
         finally:
@@ -1281,26 +1444,8 @@ def import_kontur():
         delivery = ({"sent": 0, "failed": 0}
                     if current_settings["n_new_email"] != "1"
                     else notification_service.dispatch_email_outbox())
-        excluded = summary["skipped_expired"] + summary["skipped_short_non_license"]
-        notification_parts = []
-        if notification_summary["site_created"]:
-            notification_parts.append(
-                f"уведомлений на сайте {notification_summary['site_created']}"
-            )
-        if delivery.get("sent"):
-            notification_parts.append(f"писем отправлено {delivery['sent']}")
-        elif notification_summary["outbox_created"] and delivery.get("config_error"):
-            notification_parts.append("письмо сохранено в очереди — заполните SMTP-настройки в .env")
-        elif delivery.get("failed"):
-            notification_parts.append("письмо осталось в очереди из-за ошибки отправки")
-        notification_text = (", " + ", ".join(notification_parts)) if notification_parts else ""
-        flash(
-            "Выгрузка Контур.Закупок импортирована: "
-            f"новых {summary['new']}, обновлено {summary['updated']}, "
-            f"оставлено {summary['kept']}, исключено по сроку {excluded}, "
-            f"удалено из базы {summary['removed_by_deadline']}"
-            f"{notification_text}"
-        )
+        if delivery.get("failed") and not delivery.get("config_error"):
+            flash("Тендеры загружены, но письмо осталось в очереди из-за ошибки отправки", "err")
     except KonturExcelError as exc:
         flash(str(exc), "err")
     except Exception as exc:  # noqa: BLE001

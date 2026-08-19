@@ -67,7 +67,12 @@ class NotificationTests(unittest.TestCase):
     def test_creates_site_events_and_one_email_digest_without_duplicates(self):
         rows = [
             tender("kontur:software", "Разработка информационной системы", 75),
-            tender("kontur:license", "Поставка лицензий Postgres Pro", 40),
+            tender("kontur:license", "Поставка лицензий Postgres Pro", 65),
+            tender(
+                "kontur:low-bi",
+                "Выбор поставщика на поставку BI системы для нужд аптечной сети",
+                40,
+            ),
             tender("kontur:other", "Поставка офисных кресел", 95),
         ]
         saved = storage.save_scored(self.conn, rows)
@@ -102,7 +107,45 @@ class NotificationTests(unittest.TestCase):
         outbox = self.conn.execute("SELECT * FROM email_outbox").fetchone()
         self.assertEqual(outbox["status"], "pending")
         self.assertIn("Поставка лицензий Postgres Pro", outbox["text_body"])
+        self.assertNotIn("аптечной сети", outbox["text_body"])
         self.assertNotIn("офисных кресел", outbox["text_body"])
+
+    def test_prunes_old_notification_for_low_score_tender(self):
+        storage.save_scored(
+            self.conn,
+            [tender(
+                "kontur:low-bi",
+                "Выбор поставщика на поставку BI системы для нужд аптечной сети",
+                40,
+            )],
+        )
+        self.conn.execute(
+            "INSERT INTO site_notifications "
+            "(event_key, kind, tender_id, tender_title, message, created_at) "
+            "VALUES (?, 'new_tender', ?, ?, ?, ?)",
+            ("legacy:low-bi", "kontur:low-bi", "BI система", "Новый подходящий тендер",
+             "2026-08-19T12:00:00"),
+        )
+        notification_id = self.conn.execute(
+            "SELECT id FROM site_notifications WHERE event_key='legacy:low-bi'"
+        ).fetchone()[0]
+        self.conn.execute(
+            "INSERT INTO site_notif_seen (user_id, notification_id) VALUES (?, ?)",
+            (1, notification_id),
+        )
+        self.conn.commit()
+
+        removed = notification_service.prune_ineligible_site_notifications(
+            self.conn, relevant_min=60
+        )
+
+        self.assertEqual(removed, 1)
+        self.assertEqual(
+            self.conn.execute("SELECT COUNT(*) FROM site_notifications").fetchone()[0], 0
+        )
+        self.assertEqual(
+            self.conn.execute("SELECT COUNT(*) FROM site_notif_seen").fetchone()[0], 0
+        )
 
     def test_dispatch_marks_email_sent(self):
         storage.save_scored(

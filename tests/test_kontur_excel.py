@@ -83,6 +83,7 @@ class KonturExcelTests(unittest.TestCase):
         self.assertEqual(item["tender_id"], "kontur:4567280_458")
         self.assertEqual(item["customer"], "ООО «Тестовая крупная компания»")
         self.assertEqual(item["price_rub"], 12_500_000)
+        self.assertEqual(item["deadline"], "2099-08-24T17:30:00")
         self.assertEqual(item["url"], "https://zakupki.kontur.ru/4567280_458?utm_source=excel")
         self.assertNotIn("token=", item["url"])
         self.assertEqual(item["_details"]["customer_inn"], "7709832989")

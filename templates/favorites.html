@@ -44,7 +44,7 @@
   </div>
   <div class="tcard-right">
     <div class="tcard-price">{{ t.price_fmt }}</div>
-    <div class="tcard-deadline">{% if t.expired %}Размещение завершено{% else %}Подача заявок<br><b>до {{ t.deadline_fmt }}</b>{% endif %}</div>
+    <div class="tcard-deadline">{% if t.expired %}Размещение завершено{% else %}До окончания подачи<br><b class="{{ 'soon' if t.deadline_soon }}">{{ t.time_left_fmt }}</b>{% endif %}</div>
   </div>
   <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
     <button class="tcard-heart on" type="submit" aria-label="Убрать из избранного"><svg class="icon"><use href="#i-heart"/></svg></button>

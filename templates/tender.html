@@ -27,7 +27,7 @@
 <div class="meta-row">
   <div class="meta-item"><div class="ml">Заказчик</div><div class="mv">{{ t.customer or 'Скрыт площадкой' }}</div></div>
   <div class="meta-item"><div class="ml">Стоимость</div><div class="mv">{{ t.price_fmt }}</div></div>
-  <div class="meta-item"><div class="ml">Окончание подачи заявок</div><div class="mv {{ 'soon' if t.deadline_soon }}">{% if t.deadline_fmt and t.deadline_fmt != '—' %}{{ t.deadline_fmt }}{% if t.days_fmt and t.days_fmt != '—' %} · {{ t.days_fmt }}{% endif %}{% else %}—{% endif %}</div></div>
+  <div class="meta-item"><div class="ml">Окончание подачи заявок</div><div class="mv {{ 'soon' if t.deadline_soon }}">{% if t.deadline_fmt and t.deadline_fmt != '—' %}{{ t.deadline_fmt }} · {{ t.time_left_fmt }}{% else %}—{% endif %}</div></div>
   <div class="meta-item"><div class="ml">Тип закупки</div><div class="mv">{% if t.ptype=='gov' %}Государственный{% elif t.ptype=='com' %}Коммерческий{% else %}{{ t.direction_name }}{% endif %}</div></div>
 </div>
 

@@ -58,7 +58,9 @@ CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     username      TEXT UNIQUE NOT NULL,
     password_hash TEXT NOT NULL,              -- хэш пароля (werkzeug), не сам пароль
-    created_at    TEXT
+    created_at    TEXT,
+    avatar        BLOB,                       -- фото профиля
+    avatar_mime   TEXT                        -- MIME-тип фото
 );
 
 

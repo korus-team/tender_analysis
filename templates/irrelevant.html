@@ -23,7 +23,7 @@
   </div>
   <div class="tcard-right">
     <div class="tcard-price">{{ t.price_fmt }}</div>
-    <div class="tcard-deadline">Подача заявок<br><b>до {{ t.deadline_fmt }}</b></div>
+    <div class="tcard-deadline">До окончания подачи<br><b class="{{ 'soon' if t.deadline_soon }}">{{ t.time_left_fmt }}</b></div>
   </div>
   {% if t.np %}
   <form method="post" action="{{ url_for('toggle_not_pursued', tender_id=t.tender_id) }}"><button class="btn-sm" type="submit">Вернуть в работу</button></form>

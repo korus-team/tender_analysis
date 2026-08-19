@@ -167,22 +167,50 @@ def _build_digest(tenders: list[dict], base_url: str) -> tuple[str, str, str]:
     return subject, "\n".join(text_lines), html_body
 
 
+def is_notification_candidate(tender: dict, relevant_min: int = 60) -> bool:
+    """Совпадает ли предмет с профилем и прошёл ли тендер итоговый порог."""
+    return (directions.is_relevant(tender) and
+            int(tender.get("score") or 0) >= relevant_min)
+
+
+def prune_ineligible_site_notifications(conn, relevant_min: int = 60) -> int:
+    """Удаляет старые уведомления, созданные прежним слишком широким правилом."""
+    ensure_schema(conn)
+    invalid_ids = []
+    for row in conn.execute("SELECT id, tender_id FROM site_notifications").fetchall():
+        tender = storage.get_tender(conn, row["tender_id"]) if row["tender_id"] else None
+        if not tender or not is_notification_candidate(tender, relevant_min):
+            invalid_ids.append(row["id"])
+    if invalid_ids:
+        conn.executemany(
+            "DELETE FROM site_notif_seen WHERE notification_id = ?",
+            [(notification_id,) for notification_id in invalid_ids],
+        )
+        conn.executemany(
+            "DELETE FROM site_notifications WHERE id = ?",
+            [(notification_id,) for notification_id in invalid_ids],
+        )
+        conn.commit()
+    return len(invalid_ids)
+
+
 def create_new_tender_notifications(conn, tender_ids, *, site_enabled: bool,
                                     email_enabled: bool, recipient: str,
-                                    base_url: str, top_min: int = 70,
+                                    base_url: str, relevant_min: int = 60,
+                                    top_min: int = 70,
                                     now: datetime | None = None) -> dict:
     """Создаёт события только для действительно новых профильных тендеров.
 
-    На сайте показываются все новые профильные позиции. В email попадают наиболее
-    подходящие (по порогу) и все лицензии, поскольку для них действует отдельное
-    правило по короткому сроку.
+    Направление само по себе недостаточно: уведомляем только о тендерах, которые
+    также прошли итоговый порог релевантности. В email из них попадают наиболее
+    подходящие и лицензии.
     """
     ensure_schema(conn)
     unique_ids = list(dict.fromkeys(tid for tid in tender_ids if tid))
     tenders = []
     for tender_id in unique_ids:
         tender = storage.get_tender(conn, tender_id)
-        if tender and directions.is_relevant(tender):
+        if tender and is_notification_candidate(tender, relevant_min):
             tenders.append(tender)
     tenders.sort(key=lambda item: int(item.get("score") or 0), reverse=True)
 
