@@ -48,7 +48,14 @@
     <div class="field"><label>Электронная почта</label>
       <div class="email-wrap"><input name="email" id="emailInp" value="{{ s.email }}" placeholder="name@korusconsulting.ru"><button type="button" class="email-x" onclick="document.getElementById('emailInp').value=''" aria-label="Очистить"><svg class="icon"><use href="#i-close"/></svg></button></div>
     </div>
-    <div class="hint">Сама отправка на почту и работа по расписанию включатся после подключения почты (SMTP) и постоянного сервера.</div>
+    <button class="btn-take mine" type="submit" formaction="{{ url_for('settings_test_email') }}" style="margin-bottom:12px">Отправить тестовое письмо</button>
+    <div class="hint">
+      {% if smtp_ready %}
+        SMTP подключён. После загрузки Excel письмо о новых наиболее подходящих тендерах отправится автоматически.
+      {% else %}
+        Для отправки заполните SMTP-сервер, логин, пароль и адрес отправителя в файле <code>{{ smtp_env_path }}</code>. Поддерживаются SSL (обычно порт 465) и STARTTLS (обычно порт 587).
+      {% endif %}
+    </div>
   </div>
 </div>
 </form>

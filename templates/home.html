@@ -4,6 +4,10 @@
 <div class="topbar">
   <div><h1>Состояние на {{ now }}</h1></div>
   <div class="topbar-right">
+    <form method="post" action="{{ url_for('import_kontur') }}" enctype="multipart/form-data">
+      <label class="btn-label" for="konturFile"><svg class="icon"><use href="#i-plus"/></svg>Загрузить Excel</label>
+      <input id="konturFile" type="file" name="kontur_file" accept=".xlsx" hidden onchange="this.form.submit()">
+    </form>
     <form method="post" action="{{ url_for('ingest') }}"><button class="btn-collect" type="submit"><svg class="icon"><use href="#i-search"/></svg>Собрать тендеры</button></form>
     {% include "_notif.html" %}
   </div>
@@ -62,11 +66,12 @@
       {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
       {% if t.ptype=='gov' %}<span class="ttag ttag-gov2">Государственный</span>{% elif t.ptype=='com' %}<span class="ttag ttag-com2">Коммерческий</span>{% endif %}
       {% if t.is_license %}<span class="ttag ttag-license2">Лицензионный</span>{% endif %}
+      {% if t.direction not in ('license', 'other') %}<span class="ttag ttag-law">{{ t.direction_name }}</span>{% endif %}
     </div>
     <div class="tcard-title"><a href="{{ url_for('tender', tender_id=t.tender_id, ret=request.full_path) }}">{{ t.title }}</a></div>
     <div class="tcard-sub">{{ t.customer or 'Заказчик скрыт площадкой' }}</div>
     <div class="ttags" style="margin-top:9px">
-      {% if (t.score or 0) >= 85 %}<span class="ttag ttag-match">Наиболее подходящее</span>{% endif %}
+      {% if t.level == 'high' %}<span class="ttag ttag-match">Наиболее подходящее</span>{% endif %}
       {% if t.law %}<span class="ttag ttag-law">{{ t.law }}</span>{% endif %}
     </div>
   </div>

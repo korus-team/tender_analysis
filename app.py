@@ -25,13 +25,16 @@ from main import run_ingest, rescore_all
 from enrich import enrich_pending
 from scoring import theme_score
 from icp_config import load_icp, save_icp
+from kontur_excel import KonturExcelError, import_kontur_xlsx
+import notification_service
 
 app = Flask(__name__)
 app.secret_key = "dar-tender-assistant-local"
+app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
 
 # --- пороги и настройки отображения -----------------------------------------
 RELEVANT_MIN = 60      # «подходит нашей компании»
-TOP_MIN = 85           # «наиболее подходящее»
+TOP_MIN = 70           # «наиболее подходящее»; числа вторичны, важнее теги и объяснение
 NOTIFY_MIN_SCORE = 60  # порог: уведомления только для тендеров с баллом не ниже
 INGEST_MAX_PAGES = 50  # сколько страниц собирать
 ENRICH_MIN_SCORE = 50  # какие тендеры обогащать
@@ -214,7 +217,7 @@ def _annotate(tenders):
                               and t["direction"] != "license")
         # коммерческая / государственная (по наличию номера в ЕИС)
         det = t.get("details") if isinstance(t.get("details"), dict) else {}
-        if det and det.get("eis_number"):
+        if det and (det.get("eis_number") or det.get("eis_url")):
             t["ptype"], t["ptype_label"] = "gov", "Госзакупка (ФЗ)"
         elif t.get("enriched_at"):
             t["ptype"], t["ptype_label"] = "com", "Коммерческая"
@@ -503,6 +506,9 @@ _ensure_auth_tables()
 _ensure_meta_table()
 _ensure_priorities_table()
 _ensure_settings_table()
+_notification_conn = storage.connect()
+notification_service.ensure_schema(_notification_conn)
+_notification_conn.close()
 
 
 @app.before_request
@@ -522,7 +528,7 @@ def inject_globals():
 
 @app.context_processor
 def inject_notifications():
-    """Уведомления: события «сотрудник взял тендер в работу» (свои не показываем)."""
+    """Общий колокольчик: новые тендеры и действия сотрудников без дублей."""
     try:
         uid = session.get("user_id")
         if not uid:
@@ -530,29 +536,47 @@ def inject_notifications():
                     "my_fav_ids": set(), "taken_by": {}}
         here = request.path
         conn = storage.connect()
-        events = conn.execute(
-            "SELECT n.id, n.actor_name, n.tender_id, n.tender_title "
+        favorite_events = conn.execute(
+            "SELECT n.id, n.actor_name, n.tender_id, n.tender_title, n.created_at "
             "FROM fav_notifications n "
             "JOIN user_favorites f ON f.tender_id = n.tender_id AND f.user_id = n.actor_id "
             "WHERE n.actor_id != ? ORDER BY n.id DESC LIMIT 40", (uid,)).fetchall()
-        seen = {r[0] for r in conn.execute(
+        favorite_seen = {r[0] for r in conn.execute(
             "SELECT notif_id FROM notif_seen WHERE user_id = ?", (uid,))}
+        site_events = conn.execute(
+            "SELECT id, kind, tender_id, tender_title, message, created_at "
+            "FROM site_notifications ORDER BY id DESC LIMIT 40"
+        ).fetchall()
+        site_seen = {r[0] for r in conn.execute(
+            "SELECT notification_id FROM site_notif_seen WHERE user_id = ?", (uid,))}
         my_favs = _my_fav_ids(conn, uid)
         taken_by = {r["tender_id"]: r["username"] for r in conn.execute(
             "SELECT f.tender_id, u.username FROM user_favorites f "
             "JOIN users u ON u.id = f.user_id")}
         conn.close()
         notes = []
-        for e in events:
+        for e in favorite_events:
             nid = e["id"]
             target = url_for("tender", tender_id=e["tender_id"], ret=here)
             notes.append({
-                "id": nid,
+                "id": nid, "created_at": e["created_at"] or "", "icon": "i-heart",
                 "title": e["tender_title"] or "Тендер",
                 "meta": f"{e['actor_name'] or 'Сотрудник'} взял(а) в работу",
-                "url": url_for("notif_read", id=nid, to=target),
-                "read": nid in seen,
+                "url": url_for("notif_read", id=nid, source="favorite", to=target),
+                "read": nid in favorite_seen,
             })
+        for e in site_events:
+            nid = e["id"]
+            target = url_for("tender", tender_id=e["tender_id"], ret=here)
+            notes.append({
+                "id": nid, "created_at": e["created_at"] or "", "icon": "i-search",
+                "title": e["tender_title"] or "Новый тендер",
+                "meta": e["message"] or "Новый подходящий тендер",
+                "url": url_for("notif_read", id=nid, source="site", to=target),
+                "read": nid in site_seen,
+            })
+        notes.sort(key=lambda note: note["created_at"], reverse=True)
+        notes = notes[:40]
         return {"notifications": notes,
                 "notif_count": sum(1 for n in notes if not n["read"]),
                 "my_fav_ids": my_favs, "taken_by": taken_by}
@@ -625,7 +649,7 @@ def home():
     direction = request.args.get("direction") or None
     ptype = request.args.get("ptype") or None
     q = (request.args.get("q") or "").strip()
-    sort = request.args.get("sort") or "ai"
+    sort = request.args.get("sort") or "deadline"
     show = request.args.get("show") or "all"
     show_filters = request.args.get("filters") == "1"
     page = request.args.get("page", type=int) or 1
@@ -1072,6 +1096,8 @@ def _load_settings():
     conn.close()
     s = dict(SETTINGS_DEFAULTS)
     s.update(saved)
+    if not (s.get("email") or "").strip():
+        s["email"] = notification_service.smtp_config()["recipient"]
     return s
 
 
@@ -1092,7 +1118,21 @@ def settings():
         flash("Настройки сохранены")
         return redirect(url_for("settings"))
     return render_template("settings.html", active="settings", s=_load_settings(),
+                           smtp_ready=notification_service.smtp_ready(),
+                           smtp_env_path=str(notification_service.ENV_PATH),
                            windows=["В 8 – 9", "В 9 – 10", "В 12 – 13", "В 16 – 17", "В 18 – 19"])
+
+
+@app.route("/settings/test-email", methods=["POST"])
+def settings_test_email():
+    """Проверяет локальные SMTP-настройки отдельным безопасным письмом."""
+    recipient = (request.form.get("email") or _load_settings().get("email") or "").strip()
+    try:
+        notification_service.send_test_email(recipient)
+        flash(f"Тестовое письмо отправлено на {recipient}")
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Не удалось отправить тестовое письмо: {exc}", "err")
+    return redirect(url_for("settings"))
 
 
 # ============================================================================
@@ -1210,6 +1250,64 @@ def ingest():
     return redirect(request.referrer or url_for("home"))
 
 
+@app.route("/import/kontur", methods=["POST"])
+def import_kontur():
+    """Загрузка Excel-выгрузки Контур.Закупок через общий конвейер скоринга."""
+    upload = request.files.get("kontur_file")
+    if not upload or not upload.filename:
+        flash("Выберите Excel-файл Контур.Закупок", "err")
+        return redirect(request.referrer or url_for("home"))
+    if not upload.filename.lower().endswith(".xlsx"):
+        flash("Поддерживаются только выгрузки Контур.Закупок в формате .xlsx", "err")
+        return redirect(request.referrer or url_for("home"))
+
+    try:
+        summary = import_kontur_xlsx(upload.stream)
+        current_settings = _load_settings()
+        smtp = notification_service.smtp_config()
+        notification_conn = storage.connect()
+        try:
+            notification_summary = notification_service.create_new_tender_notifications(
+                notification_conn,
+                summary.get("new_ids", []),
+                site_enabled=current_settings["n_new_site"] == "1",
+                email_enabled=current_settings["n_new_email"] == "1",
+                recipient=current_settings.get("email") or smtp["recipient"],
+                base_url=smtp["base_url"],
+                top_min=TOP_MIN,
+            )
+        finally:
+            notification_conn.close()
+        delivery = ({"sent": 0, "failed": 0}
+                    if current_settings["n_new_email"] != "1"
+                    else notification_service.dispatch_email_outbox())
+        excluded = summary["skipped_expired"] + summary["skipped_short_non_license"]
+        notification_parts = []
+        if notification_summary["site_created"]:
+            notification_parts.append(
+                f"уведомлений на сайте {notification_summary['site_created']}"
+            )
+        if delivery.get("sent"):
+            notification_parts.append(f"писем отправлено {delivery['sent']}")
+        elif notification_summary["outbox_created"] and delivery.get("config_error"):
+            notification_parts.append("письмо сохранено в очереди — заполните SMTP-настройки в .env")
+        elif delivery.get("failed"):
+            notification_parts.append("письмо осталось в очереди из-за ошибки отправки")
+        notification_text = (", " + ", ".join(notification_parts)) if notification_parts else ""
+        flash(
+            "Выгрузка Контур.Закупок импортирована: "
+            f"новых {summary['new']}, обновлено {summary['updated']}, "
+            f"оставлено {summary['kept']}, исключено по сроку {excluded}, "
+            f"удалено из базы {summary['removed_by_deadline']}"
+            f"{notification_text}"
+        )
+    except KonturExcelError as exc:
+        flash(str(exc), "err")
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Ошибка импорта Контур.Закупок: {exc}", "err")
+    return redirect(request.referrer or url_for("home"))
+
+
 @app.route("/rescore", methods=["POST"])
 def rescore():
     try:
@@ -1306,8 +1404,14 @@ def notif_read():
     uid = session.get("user_id")
     if nid and uid:
         conn = storage.connect()
-        conn.execute("INSERT OR IGNORE INTO notif_seen (user_id, notif_id) VALUES (?, ?)",
-                     (uid, nid))
+        if request.args.get("source") == "site":
+            conn.execute(
+                "INSERT OR IGNORE INTO site_notif_seen (user_id, notification_id) VALUES (?, ?)",
+                (uid, nid),
+            )
+        else:
+            conn.execute("INSERT OR IGNORE INTO notif_seen (user_id, notif_id) VALUES (?, ?)",
+                         (uid, nid))
         conn.commit()
         conn.close()
     if to.startswith("/") and not to.startswith("//") and "\\" not in to:
