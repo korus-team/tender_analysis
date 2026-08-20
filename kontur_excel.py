@@ -18,7 +18,7 @@ import company_size
 import directions
 import storage
 from icp_config import load_icp
-from scoring import score_tender
+from scoring import score_tender, score_tender_llm
 
 
 SOURCE_NAME = "kontur-excel"
@@ -290,13 +290,18 @@ def parse_kontur_xlsx(source) -> dict:
 
 
 def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
-                       now: datetime | None = None) -> dict:
+                       now: datetime | None = None, use_llm: bool = False) -> dict:
     """Импортирует Excel, применяя текущий фильтр компаний и скоринг приложения."""
     parsed = parse_kontur_xlsx(source)
     icp = icp or load_icp()
     own_connection = conn is None
     conn = conn or storage.connect()
     now = now or datetime.now()
+    llm_scorer = None
+    if use_llm:
+        from LLM_scoring import OpenAITenderScorer
+
+        llm_scorer = OpenAITenderScorer()
     kept: list[dict] = []
     skipped_small = 0
     skipped_expired = 0
@@ -330,7 +335,11 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
                 continue
 
             item["days_left"] = _days_left(item.get("deadline"), now)
-            result = score_tender(item, icp)
+            result = (
+                score_tender_llm(item, icp, scorer=llm_scorer)
+                if llm_scorer is not None
+                else score_tender(item, icp)
+            )
             item["score"] = result.score
             item["verdict"] = result.verdict
             revenue = company_size.annual_revenue_rub(item.get("customer"))

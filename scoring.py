@@ -14,6 +14,9 @@ from dataclasses import dataclass, field
 
 import directions
 
+LLM_WEIGHT = 0.8
+RULES_WEIGHT = 0.2
+
 
 def _contains(text: str, term: str) -> bool:
     """
@@ -190,3 +193,57 @@ def score_tender(tender: dict, icp: dict) -> ScoreResult:
         verdict = "low"
 
     return ScoreResult(score_int, verdict, reasons, labels)
+
+
+def score_tender_llm(tender: dict, icp: dict, *, scorer=None) -> ScoreResult:
+    """Return the hybrid score: 80% LLM semantic score and 20% rule score.
+
+    The rule result remains useful as a transparent audit trail: its labels and
+    reasons are retained alongside the LLM's direction, uncertainty and reason.
+    Pass one shared ``OpenAITenderScorer`` instance from the caller so a batch
+    does not recreate the API client for every tender.
+    Возвращает следующую оценку тендера LLM-кой:
+    1. score (0...100)
+    2. verdict
+    3. reasons
+    4. labels
+    """
+    rules_result = score_tender(tender, icp)
+
+    if scorer is None:
+        from LLM_scoring import OpenAITenderScorer
+
+        scorer = OpenAITenderScorer()
+
+    llm_result = scorer.score(_llm_input(tender))
+    evaluation = llm_result.evaluation
+    score = round(LLM_WEIGHT * evaluation.score + RULES_WEIGHT * rules_result.score)
+
+    if score >= 70:
+        verdict = "take"
+    elif score >= 40:
+        verdict = "review"
+    else:
+        verdict = "low"
+
+    return ScoreResult(
+        score=score,
+        verdict=verdict,
+        reasons=[*rules_result.reasons, f"LLM: {evaluation.reason}"],
+        labels=[
+            *rules_result.labels,
+            "llm-scored",
+            f"llm-direction:{evaluation.direction.value}",
+            f"uncertainty:{evaluation.uncertainty.value}",
+        ],
+    )
+
+
+def _llm_input(tender: dict) -> str:
+    """ИНформация передаваемая LLM"""
+    fields = (
+        ("Предмет", tender.get("subject") or tender.get("title")),
+        ("Заказчик", tender.get("customer")),
+    )
+    # ``OpenAITenderScorer`` accepts at most 2,000 characters per request.
+    return "\n".join(f"{name}: {value}" for name, value in fields if value)[:2_000]

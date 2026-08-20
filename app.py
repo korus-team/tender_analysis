@@ -10,6 +10,7 @@ enrich, icp_config) — эти файлы менять не нужно.
 from __future__ import annotations
 
 import math
+import os
 import re
 from datetime import datetime
 from functools import wraps
@@ -37,6 +38,7 @@ RELEVANT_MIN = 60      # «подходит нашей компании»
 TOP_MIN = 70           # «наиболее подходящее»; числа вторичны, важнее теги и объяснение
 NOTIFY_MIN_SCORE = 60  # порог: уведомления только для тендеров с баллом не ниже
 INGEST_MAX_PAGES = 50  # сколько страниц собирать
+USE_LLM_SCORING = os.getenv("USE_LLM_SCORING", "0") == "1"
 ENRICH_MIN_SCORE = 50  # какие тендеры обогащать
 PER_PAGE = 20          # тендеров на страницу списка
 
@@ -1406,7 +1408,7 @@ def toggle_not_pursued(tender_id):
 def ingest():
     """Одна кнопка: собрать из всех источников (с фильтром 10 млрд ₽) и обогатить."""
     try:
-        run_ingest(max_pages=INGEST_MAX_PAGES, use_llm=False, write_json=True)
+        run_ingest(max_pages=INGEST_MAX_PAGES, use_llm=USE_LLM_SCORING, write_json=True)
     except Exception as e:  # noqa: BLE001
         flash(f"Ошибка сбора: {e}", "err")
     return redirect(request.referrer or url_for("home"))
@@ -1424,7 +1426,7 @@ def import_kontur():
         return redirect(request.referrer or url_for("home"))
 
     try:
-        summary = import_kontur_xlsx(upload.stream)
+        summary = import_kontur_xlsx(upload.stream, use_llm=USE_LLM_SCORING)
         current_settings = _load_settings()
         smtp = notification_service.smtp_config()
         notification_conn = storage.connect()
