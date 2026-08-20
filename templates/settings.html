@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block content %}
-<div class="settings-page">
+<div class="settings-page" data-avatar-url="{{ url_for('settings_avatar') }}" data-contacts-url="{{ url_for('settings_contacts') }}">
 
   <div class="topbar">
     <div><h1>Настройки</h1></div>
@@ -57,6 +57,33 @@
               <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_remind_site" {{ 'checked' if s.n_remind_site=='1' }}><span class="tr"></span></span></label>
               <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_remind_email" {{ 'checked' if s.n_remind_email=='1' }}><span class="tr"></span></span></label>
             </div>
+
+            <div class="notify-row">
+              <div>
+                <div class="notify-title">Лицензионные запросы</div>
+                <div class="notify-desc">Новые запросы и обновления по лицензиям</div>
+              </div>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_license_site" {{ 'checked' if s.n_license_site=='1' }}><span class="tr"></span></span></label>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_license_email" {{ 'checked' if s.n_license_email=='1' }}><span class="tr"></span></span></label>
+            </div>
+
+            <div class="notify-row">
+              <div>
+                <div class="notify-title">События по приоритетным компаниям</div>
+                <div class="notify-desc">Тендеры от ваших приоритетных компаний</div>
+              </div>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_priority_site" {{ 'checked' if s.n_priority_site=='1' }}><span class="tr"></span></span></label>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_priority_email" {{ 'checked' if s.n_priority_email=='1' }}><span class="tr"></span></span></label>
+            </div>
+
+            <div class="notify-row">
+              <div>
+                <div class="notify-title">Еженедельная сводка</div>
+                <div class="notify-desc">Краткая подборка лучших предложений за неделю</div>
+              </div>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_weekly_site" {{ 'checked' if s.n_weekly_site=='1' }}><span class="tr"></span></span></label>
+              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_weekly_email" {{ 'checked' if s.n_weekly_email=='1' }}><span class="tr"></span></span></label>
+            </div>
           </div>
         </div>
 
@@ -109,7 +136,7 @@
                 <input name="email" id="emailInp" value="{{ s.email }}" placeholder="name@korusconsulting.ru">
                 <button type="button" class="email-x" onclick="document.getElementById('emailInp').value=''" aria-label="Очистить"><svg class="icon"><use href="#i-close"/></svg></button>
               </div>
-              <span class="settings-add-link"><span style="font-size:18px">＋</span>Добавить дополнительную почту</span>
+              <button class="settings-add-btn" type="button" data-add-contact="email"><span class="plus">＋</span>Добавить дополнительную почту</button>
             </div>
 
             <button class="btn-sm" type="submit" formaction="{{ url_for('settings_test_email') }}">Отправить тестовое письмо</button>
@@ -168,7 +195,9 @@
               <input value="{{ s.email }}" readonly>
             </div>
 
-            <span class="settings-add-link"><span style="font-size:18px">＋</span>Добавить телефон или почту</span>
+            <div class="extra-contacts" id="extraContacts"></div>
+            <input type="hidden" id="extraContactsValue" value="{{ s.extra_contacts }}">
+            <button class="settings-add-btn" type="button" data-add-contact="any"><span class="plus">＋</span>Добавить телефон или почту</button>
           </div>
 
           <div class="settings-card blue">
@@ -247,7 +276,9 @@ if(avatarFile){
     var data=new FormData();
     data.append('avatar',this.files[0]);
     try{
-      var response=await fetch({{ url_for('settings_avatar')|tojson }},{method:'POST',body:data,headers:{'X-Requested-With':'fetch'}});
+      var page=document.querySelector('.settings-page');
+      var avatarUrl=page?page.dataset.avatarUrl:'';
+      var response=await fetch(avatarUrl,{method:'POST',body:data,headers:{'X-Requested-With':'fetch'}});
       var result=await response.json();
       if(!response.ok||!result.ok) throw new Error(result.error||'Не удалось загрузить фото');
       var fresh=result.avatar_url+'?v='+Date.now();
@@ -264,5 +295,72 @@ if(avatarFile){
     }
   });
 }
+
+function renderExtraContacts(){
+  var box=document.getElementById('extraContacts');
+  var hidden=document.getElementById('extraContactsValue');
+  if(!box||!hidden) return;
+  box.innerHTML='';
+  var vals=(hidden.value||'').split('\n').map(function(x){return x.trim();}).filter(Boolean);
+  vals.forEach(function(value,index){
+    var row=document.createElement('div');
+    row.className='extra-contact-row';
+
+    var input=document.createElement('input');
+    input.type='text';
+    input.value=value;
+    input.readOnly=true;
+
+    var remove=document.createElement('button');
+    remove.type='button';
+    remove.className='extra-contact-remove';
+    remove.setAttribute('aria-label','Удалить контакт');
+    remove.textContent='×';
+    remove.addEventListener('click',function(){
+      vals.splice(index,1);
+      hidden.value=vals.join('\n');
+      renderExtraContacts();
+      saveExtraContacts();
+    });
+
+    row.appendChild(input);
+    row.appendChild(remove);
+    box.appendChild(row);
+  });
+}
+
+async function saveExtraContacts(){
+  var hidden=document.getElementById('extraContactsValue');
+  var page=document.querySelector('.settings-page');
+  if(!hidden||!page) return;
+  var data=new FormData();
+  data.append('extra_contacts',hidden.value||'');
+  try{
+    await fetch(page.dataset.contactsUrl,{
+      method:'POST',
+      body:data,
+      headers:{'X-Requested-With':'fetch'}
+    });
+  }catch(e){}
+}
+
+document.querySelectorAll('[data-add-contact]').forEach(function(btn){
+  btn.addEventListener('click',function(){
+    var kind=this.getAttribute('data-add-contact');
+    var label=kind==='email'?'Введите дополнительную почту':'Введите телефон или электронную почту';
+    var value=window.prompt(label);
+    if(!value||!value.trim()) return;
+
+    var hidden=document.getElementById('extraContactsValue');
+    if(!hidden) return;
+    var vals=(hidden.value||'').split('\n').map(function(x){return x.trim();}).filter(Boolean);
+    vals.push(value.trim());
+    hidden.value=vals.join('\n');
+    renderExtraContacts();
+    saveExtraContacts();
+  });
+});
+renderExtraContacts();
+
 </script>
 {% endblock %}

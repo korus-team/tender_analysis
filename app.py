@@ -454,7 +454,8 @@ def _load_stages(conn):
 
 STAGE_LABELS = {"passed_dar": "Передано ДАР",
                 "rejected_dar": "Отклонено ДАР",
-                "passed_other": "Передано др. деп."}
+                "passed_other": "Передано др. деп.",
+                "not_pursued": "Не пошли"}
 
 
 def _load_meta(conn):
@@ -1170,10 +1171,14 @@ SETTINGS_DEFAULTS = {
     "n_new_email": "1", "n_new_site": "1",
     "n_fav_email": "0", "n_fav_site": "1",
     "n_remind_email": "1", "n_remind_site": "0",
+    "n_license_email": "1", "n_license_site": "1",
+    "n_priority_email": "1", "n_priority_site": "1",
+    "n_weekly_email": "1", "n_weekly_site": "0",
     "timezone": "Московское время UTC +3",
     "check_freq": "1", "check_win1": "В 9 – 10", "check_win2": "В 12 – 13", "check_win3": "В 16 – 17",
     "notify_freq": "1", "notify_win": "В 8 – 9",
     "email": "",
+    "extra_contacts": "",
 }
 
 
@@ -1192,10 +1197,13 @@ def _load_settings():
 def settings():
     if request.method == "POST":
         toggles = ["n_new_email", "n_new_site", "n_fav_email", "n_fav_site",
-                   "n_remind_email", "n_remind_site"]
+                   "n_remind_email", "n_remind_site",
+                   "n_license_email", "n_license_site",
+                   "n_priority_email", "n_priority_site",
+                   "n_weekly_email", "n_weekly_site"]
         vals = {k: ("1" if request.form.get(k) else "0") for k in toggles}
         for k in ("timezone", "check_freq", "check_win1", "check_win2", "check_win3",
-                  "notify_freq", "notify_win", "email"):
+                  "notify_freq", "notify_win", "email", "extra_contacts"):
             vals[k] = request.form.get(k, SETTINGS_DEFAULTS[k])
         conn = storage.connect()
         for k, v in vals.items():
@@ -1208,6 +1216,21 @@ def settings():
                            smtp_ready=notification_service.smtp_ready(),
                            smtp_env_path=str(notification_service.ENV_PATH),
                            windows=["В 8 – 9", "В 9 – 10", "В 12 – 13", "В 16 – 17", "В 18 – 19"])
+
+
+@app.route("/settings/contacts", methods=["POST"])
+def settings_contacts():
+    value = (request.form.get("extra_contacts") or "").strip()
+    conn = storage.connect()
+    conn.execute(
+        "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+        ("extra_contacts", value),
+    )
+    conn.commit()
+    conn.close()
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify(ok=True)
+    return redirect(url_for("settings") + "#profile")
 
 
 @app.route("/settings/account", methods=["POST"])
