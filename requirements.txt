@@ -3,6 +3,9 @@ beautifulsoup4>=4.12
 lxml>=5.0
 Flask>=3.0
 openpyxl>=3.1
+pypdf>=5.0
+openai>=1.0
+python-dotenv>=1.0
 
 # Опционально — только если включаете ИИ-слой (USE_LLM=True в main.py):
 # anthropic>=0.40

@@ -624,6 +624,18 @@ svg{display:block}
 .btn-sm.teal{background:var(--accent-btn);border-color:var(--accent-btn);color:#000000}
 .btn-sm.teal:hover{filter:brightness(1.05)}
 .btn-sm[disabled]{opacity:.55;cursor:default}
+.analysis-open-btn{margin-top:14px}
+.analysis-meta{margin-top:13px;padding-top:12px;border-top:1px solid var(--border);font-size:13.5px!important}
+.tender-modal{display:none;position:fixed;z-index:1000;inset:0;align-items:center;justify-content:center;padding:20px}
+.tender-modal.is-open{display:flex}
+.tender-modal__backdrop{position:absolute;inset:0;background:rgba(26,22,42,.38)}
+.tender-modal__panel{position:relative;width:min(100%,620px);max-height:calc(100vh - 40px);overflow:auto;background:#fff;border:2px solid var(--c-purple);border-radius:18px;padding:25px;box-shadow:0 18px 55px rgba(38,24,71,.2)}
+.tender-modal__panel h2{font-size:20px;margin:0 34px 9px 0}.tender-modal__panel>p{color:var(--text-2);font-size:14px;line-height:1.5;margin-bottom:18px}
+.tender-modal__close{position:absolute;right:15px;top:12px;border:0;background:transparent;color:var(--text-2);font-size:30px;line-height:1;cursor:pointer}
+.file-drop{display:flex;flex-direction:column;gap:6px;min-height:128px;align-items:center;justify-content:center;text-align:center;border:1.5px dashed var(--c-purple);border-radius:14px;background:var(--surface-2);cursor:pointer;padding:18px;font-size:15px;font-weight:600}
+.file-drop input{position:absolute;width:1px;height:1px;opacity:0}.file-drop small{font-size:12.5px;font-weight:400;color:var(--text-2);max-width:100%;overflow-wrap:anywhere}
+.analysis-check{display:flex;align-items:flex-start;gap:9px;margin:16px 0;color:var(--text);font-size:14px;line-height:1.4;cursor:pointer}.analysis-check input{margin-top:3px;accent-color:var(--teal)}
+.tender-modal__actions{display:flex;gap:10px;flex-wrap:wrap}.recommendations-list{padding-left:20px;display:flex;flex-direction:column;gap:13px;font-size:14.5px;line-height:1.45;margin:16px 0 22px}.recommendations-list li::marker{color:var(--teal);font-weight:700}.recommendation-source{display:block;width:max-content;max-width:100%;margin-top:5px;color:var(--teal);font-size:12.5px;text-decoration:none;overflow-wrap:anywhere}.recommendation-source:hover{text-decoration:underline}.recommendation-source.muted{color:var(--text-3)}
 .mail-form{margin-top:16px;display:flex;gap:12px;align-items:flex-start}
 .mail-send{flex-shrink:0;width:74px;height:74px;border-radius:12px;border:1px solid var(--border-2);background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:var(--text-2);font-size:12px}
 .mail-send .icon{width:22px;height:22px}

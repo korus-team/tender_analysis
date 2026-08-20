@@ -26,3 +26,6 @@ tenders.db
 .env
 .env.*
 !.env.example
+
+# Локальные документы, загруженные для ИИ-анализа
+uploads/
