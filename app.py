@@ -42,7 +42,7 @@ RELEVANT_MIN = 60      # «подходит нашей компании»
 TOP_MIN = 70           # «наиболее подходящее»; числа вторичны, важнее теги и объяснение
 NOTIFY_MIN_SCORE = 60  # порог: уведомления только для тендеров с баллом не ниже
 INGEST_MAX_PAGES = 50  # сколько страниц собирать
-USE_LLM_SCORING = os.getenv("USE_LLM_SCORING", "0") == "1"
+USE_LLM_SCORING = str(os.getenv("USE_LLM_SCORING", "0")) == "1"
 ENRICH_MIN_SCORE = 50  # какие тендеры обогащать
 PER_PAGE = 20          # тендеров на страницу списка
 
@@ -1140,7 +1140,7 @@ def profile():
         icp["stop_words"] = _lines(f.get("stop_words"))
         save_icp(icp)
         try:
-            n = rescore_all(icp)
+            n = rescore_all(icp, use_llm=USE_LLM_SCORING)
             flash(f"Профиль сохранён, баллы пересчитаны: {n} тендеров")
         except Exception as e:  # noqa: BLE001
             flash(f"Профиль сохранён, но пересчёт не удался: {e}", "err")
