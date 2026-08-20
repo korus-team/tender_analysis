@@ -131,7 +131,7 @@
 
           <div class="profile-main">
             <div class="profile-photo">
-              <div class="profile-avatar">
+              <div class="profile-avatar" id="profileAvatar">
                 {% if current_user and current_user.avatar_url %}
                   <img src="{{ current_user.avatar_url }}" alt="Фото профиля">
                 {% else %}
@@ -143,7 +143,7 @@
                 <svg class="icon"><use href="#i-plus"/></svg>Изменить фото
               </label>
               <input id="avatarFile" type="file" name="avatar" accept="image/png,image/jpeg,image/gif,image/webp" hidden>
-              <div class="profile-file-hint" id="avatarFileName">JPG, PNG не более 3 МБ</div>
+              <div class="profile-file-hint" id="avatarFileName">Фото сохранится сразу после выбора · до 3 МБ</div>
 
               {% if current_user and current_user.has_avatar %}
               <label class="account-remove"><input type="checkbox" name="remove_avatar" value="1"> Удалить текущее фото</label>
@@ -214,13 +214,18 @@ toggleWins();
 
 var tabs=document.querySelectorAll('[data-settings-tab]');
 var panels=document.querySelectorAll('[data-settings-panel]');
+function openSettingsTab(key){
+  tabs.forEach(function(x){x.classList.toggle('on',x.getAttribute('data-settings-tab')===key);});
+  panels.forEach(function(p){p.hidden=p.getAttribute('data-settings-panel')!==key;});
+}
 tabs.forEach(function(tab){
   tab.addEventListener('click',function(){
     var key=this.getAttribute('data-settings-tab');
-    tabs.forEach(function(x){x.classList.toggle('on',x===tab);});
-    panels.forEach(function(p){p.hidden=p.getAttribute('data-settings-panel')!==key;});
+    openSettingsTab(key);
+    history.replaceState(null,'','#'+key);
   });
 });
+if(location.hash==='#profile'){openSettingsTab('profile');}
 
 var saveBtn=document.getElementById('settingsSaveBtn');
 if(saveBtn){
@@ -235,8 +240,28 @@ if(saveBtn){
 var avatarFile=document.getElementById('avatarFile');
 var avatarFileName=document.getElementById('avatarFileName');
 if(avatarFile){
-  avatarFile.addEventListener('change',function(){
-    avatarFileName.textContent='JPG, PNG не более 3 МБ';
+  avatarFile.addEventListener('change',async function(){
+    if(!this.files.length) return;
+    avatarFileName.textContent='Загрузка фото...';
+    avatarFileName.style.color='';
+    var data=new FormData();
+    data.append('avatar',this.files[0]);
+    try{
+      var response=await fetch({{ url_for('settings_avatar')|tojson }},{method:'POST',body:data,headers:{'X-Requested-With':'fetch'}});
+      var result=await response.json();
+      if(!response.ok||!result.ok) throw new Error(result.error||'Не удалось загрузить фото');
+      var fresh=result.avatar_url+'?v='+Date.now();
+      var profileAvatar=document.getElementById('profileAvatar');
+      if(profileAvatar) profileAvatar.innerHTML='<img src="'+fresh+'" alt="Фото профиля">';
+      var sidebarAvatar=document.querySelector('.sidebar .avatar');
+      if(sidebarAvatar) sidebarAvatar.innerHTML='<img src="'+fresh+'" alt="">';
+      avatarFileName.textContent='Фото сохранено';
+      avatarFileName.style.color='#2E9E5B';
+      this.value='';
+    }catch(error){
+      avatarFileName.textContent=error.message;
+      avatarFileName.style.color='#BC3325';
+    }
   });
 }
 </script>

@@ -1969,7 +1969,7 @@ a[aria-current="page"]{
     </nav>
     <div class="nav-spacer"></div>
     <div class="user">
-      <a class="avatar" href="{{ url_for('settings') }}#account" aria-label="Настройки профиля">
+      <a class="avatar" href="{{ url_for('settings') }}#profile" aria-label="Настройки профиля">
         {% if current_user and current_user.avatar_url %}<img src="{{ current_user.avatar_url }}" alt="">{% else %}<span>{{ current_user.username[:1]|upper if current_user and current_user.username else 'U' }}</span>{% endif %}
       </a>
       <div class="user-meta">

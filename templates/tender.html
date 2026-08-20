@@ -35,7 +35,7 @@
   </div>
   <div class="meta-item">
     <div class="ml">Окончание подачи заявок</div>
-    <div class="mv {{ 'soon' if t.deadline_soon }}">{% if t.deadline_fmt and t.deadline_fmt != '—' %}{{ t.deadline_fmt }} · {{ t.time_left_fmt }}{% else %}—{% endif %}</div>
+    <div class="mv {{ 'soon' if t.deadline_soon }}">{% if t.deadline_fmt and t.deadline_fmt != '—' %}{{ t.deadline_fmt }}{% else %}—{% endif %}</div>
   </div>
   <div class="meta-item">
     <div class="ml">Тип закупки</div>
