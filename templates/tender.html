@@ -139,7 +139,7 @@
     <button class="tender-modal__close" type="button" aria-label="Закрыть" onclick="closeTenderModal('documentAnalysisModal')">×</button>
     <h2 id="documentAnalysisTitle">Анализ документов ИИ</h2>
     <p>Добавьте до 20 файлов: TXT, MD, CSV, DOCX или PDF. Файлы сохраняются в карточке тендера, чтобы открыть источник каждого совета.</p>
-    <form method="post" action="{{ url_for('tender_analyze_documents', tender_id=t.tender_id) }}" enctype="multipart/form-data">
+    <form id="documentAnalysisForm" method="post" action="{{ url_for('tender_analyze_documents', tender_id=t.tender_id) }}" enctype="multipart/form-data">
       <label class="file-drop" for="tenderDocuments">
         <input id="tenderDocuments" name="documents" type="file" multiple required accept=".txt,.md,.csv,.docx,.pdf" onchange="showDocumentNames(this)">
         <span>Выберите файлы или перетащите их сюда</span>
@@ -148,6 +148,14 @@
       <label class="analysis-check"><input type="checkbox" name="include_recommendations" value="1"> <span>Показать рекомендации по подготовке коммерческого предложения</span></label>
       <div class="tender-modal__actions"><button class="btn-sm teal" type="submit">Проанализировать</button><button class="btn-sm" type="button" onclick="closeTenderModal('documentAnalysisModal')">Отмена</button></div>
     </form>
+  </div>
+</div>
+
+<div class="analysis-loading" id="analysisLoading" hidden role="status" aria-live="assertive" aria-label="Документы анализируются">
+  <div class="analysis-loading__card">
+    <span class="analysis-loading__spinner" aria-hidden="true"></span>
+    <h2>ИИ читает документы</h2>
+    <p>Это может занять до пары минут. Не закрывайте страницу — результат появится в карточке тендера.</p>
   </div>
 </div>
 
@@ -179,5 +187,12 @@
 function openTenderModal(id) { const modal = document.getElementById(id); if (modal) { modal.classList.add('is-open'); modal.setAttribute('aria-hidden', 'false'); } }
 function closeTenderModal(id) { const modal = document.getElementById(id); if (modal) { modal.classList.remove('is-open'); modal.setAttribute('aria-hidden', 'true'); } }
 function showDocumentNames(input) { document.getElementById('documentNames').textContent = input.files.length ? Array.from(input.files).map(f => f.name).join(', ') : 'Не более 5 МБ на файл, 20 МБ суммарно'; }
+document.getElementById('documentAnalysisForm')?.addEventListener('submit', function () {
+  const loading = document.getElementById('analysisLoading');
+  loading.hidden = false;
+  document.body.classList.add('analysis-in-progress');
+  const submit = this.querySelector('button[type="submit"]');
+  if (submit) { submit.disabled = true; submit.textContent = 'Анализируем…'; }
+});
 </script>
 {% endblock %}
