@@ -249,6 +249,7 @@ def _annotate(tenders):
                 t[k] = t.get(k) or []
         # дедлайн
         days, dfmt, deadline_dt = None, "—", None
+        deadline_date_fmt, deadline_time_fmt = "—", ""
         dl = t.get("deadline")
         if dl:
             try:
@@ -256,12 +257,20 @@ def _annotate(tenders):
                 deadline_dt = d
                 days = (d - now).days
                 dfmt = d.strftime("%d.%m.%Y · %H:%M")
+                deadline_date_fmt = d.strftime("%d.%m.%Y")
+                deadline_time_fmt = d.strftime("%H:%M МСК")
             except (ValueError, TypeError):
                 pass
         t["days_left"] = days
         t["deadline_fmt"] = dfmt
+        t["deadline_date_fmt"] = deadline_date_fmt
+        t["deadline_time_fmt"] = deadline_time_fmt
         t["days_fmt"] = _days_fmt(days)
         t["time_left_fmt"] = _time_left_fmt(deadline_dt, now)
+        seconds_left = ((deadline_dt - now).total_seconds()
+                        if deadline_dt is not None else None)
+        t["deadline_reminder"] = (seconds_left is not None
+                                  and 0 <= seconds_left <= 3 * 24 * 3600)
         t["urgency"] = _urgency(days)
         # тип закупки (предметный тег)
         t["direction"] = directions.classify(t)
@@ -636,15 +645,16 @@ def inject_notifications():
             "SELECT n.id, n.actor_name, n.tender_id, n.tender_title, n.created_at "
             "FROM fav_notifications n "
             "JOIN user_favorites f ON f.tender_id = n.tender_id AND f.user_id = n.actor_id "
-            "WHERE n.actor_id != ? ORDER BY n.id DESC LIMIT 40", (uid,)).fetchall()
-        favorite_seen = {r[0] for r in conn.execute(
-            "SELECT notif_id FROM notif_seen WHERE user_id = ?", (uid,))}
+            "WHERE n.actor_id != ? AND NOT EXISTS ("
+            "SELECT 1 FROM notif_seen s WHERE s.user_id = ? AND s.notif_id = n.id) "
+            "ORDER BY n.id DESC LIMIT 40", (uid, uid)).fetchall()
         site_events = conn.execute(
             "SELECT id, kind, tender_id, tender_title, message, created_at "
-            "FROM site_notifications ORDER BY id DESC LIMIT 40"
+            "FROM site_notifications n WHERE NOT EXISTS ("
+            "SELECT 1 FROM site_notif_seen s "
+            "WHERE s.user_id = ? AND s.notification_id = n.id) "
+            "ORDER BY id DESC LIMIT 40", (uid,)
         ).fetchall()
-        site_seen = {r[0] for r in conn.execute(
-            "SELECT notification_id FROM site_notif_seen WHERE user_id = ?", (uid,))}
         my_favs = _my_fav_ids(conn, uid)
         taken_by = {r["tender_id"]: r["username"] for r in conn.execute(
             "SELECT f.tender_id, u.username FROM user_favorites f "
@@ -659,7 +669,6 @@ def inject_notifications():
                 "title": e["tender_title"] or "Тендер",
                 "meta": f"{e['actor_name'] or 'Сотрудник'} взял(а) в работу",
                 "url": url_for("notif_read", id=nid, source="favorite", to=target),
-                "read": nid in favorite_seen,
             })
         for e in site_events:
             nid = e["id"]
@@ -669,12 +678,11 @@ def inject_notifications():
                 "title": e["tender_title"] or "Новый тендер",
                 "meta": e["message"] or "Новый подходящий тендер",
                 "url": url_for("notif_read", id=nid, source="site", to=target),
-                "read": nid in site_seen,
             })
         notes.sort(key=lambda note: note["created_at"], reverse=True)
         notes = notes[:40]
         return {"notifications": notes,
-                "notif_count": sum(1 for n in notes if not n["read"]),
+                "notif_count": len(notes),
                 "my_fav_ids": my_favs, "taken_by": taken_by}
     except Exception:  # noqa: BLE001
         return {"notifications": [], "notif_count": 0,
@@ -1234,27 +1242,27 @@ def settings_account():
     if len(username) < 2:
         conn.close()
         flash("Логин должен содержать не менее 2 символов", "err")
-        return redirect(url_for("settings") + "#account")
+        return redirect(url_for("settings") + "#profile")
     if username_changed or password_changed:
         if not current_password or not check_password_hash(user["password_hash"], current_password):
             conn.close()
             flash("Чтобы изменить логин или пароль, укажите текущий пароль", "err")
-            return redirect(url_for("settings") + "#account")
+            return redirect(url_for("settings") + "#profile")
     if password_changed:
         if len(new_password) < 4:
             conn.close()
             flash("Новый пароль должен содержать не менее 4 символов", "err")
-            return redirect(url_for("settings") + "#account")
+            return redirect(url_for("settings") + "#profile")
         if new_password != password_confirm:
             conn.close()
             flash("Новый пароль и подтверждение не совпадают", "err")
-            return redirect(url_for("settings") + "#account")
+            return redirect(url_for("settings") + "#profile")
     if username_changed and conn.execute(
             "SELECT 1 FROM users WHERE username = ? AND id <> ?", (username, uid)
     ).fetchone():
         conn.close()
         flash("Такой логин уже занят", "err")
-        return redirect(url_for("settings") + "#account")
+        return redirect(url_for("settings") + "#profile")
 
     avatar_data = None
     avatar_mime = None
@@ -1264,12 +1272,12 @@ def settings_account():
         if len(avatar_data) > 3 * 1024 * 1024:
             conn.close()
             flash("Фото профиля должно быть не больше 3 МБ", "err")
-            return redirect(url_for("settings") + "#account")
+            return redirect(url_for("settings") + "#profile")
         avatar_mime = _image_mime(avatar_data)
         if not avatar_mime:
             conn.close()
             flash("Поддерживаются фотографии PNG, JPG, GIF и WEBP", "err")
-            return redirect(url_for("settings") + "#account")
+            return redirect(url_for("settings") + "#profile")
         avatar_changed = True
 
     updates = ["username = ?"]
@@ -1290,7 +1298,37 @@ def settings_account():
     session["username"] = saved["username"]
     session["has_avatar"] = bool(saved["avatar_mime"])
     flash("Данные учётной записи сохранены")
-    return redirect(url_for("settings") + "#account")
+    return redirect(url_for("settings") + "#profile")
+
+
+@app.route("/settings/avatar", methods=["POST"])
+def settings_avatar():
+    """Сохраняет выбранное фото сразу, отдельно от логина и пароля."""
+    upload = request.files.get("avatar")
+    if not upload or not upload.filename:
+        return jsonify(ok=False, error="Выберите фотографию"), 400
+    avatar_data = upload.read(3 * 1024 * 1024 + 1)
+    if len(avatar_data) > 3 * 1024 * 1024:
+        return jsonify(ok=False, error="Фото профиля должно быть не больше 3 МБ"), 400
+    avatar_mime = _image_mime(avatar_data)
+    if not avatar_mime:
+        return jsonify(ok=False, error="Поддерживаются фотографии PNG, JPG, GIF и WEBP"), 400
+
+    uid = session["user_id"]
+    conn = storage.connect()
+    exists = conn.execute("SELECT 1 FROM users WHERE id = ?", (uid,)).fetchone()
+    if not exists:
+        conn.close()
+        session.clear()
+        return jsonify(ok=False, error="Пользователь не найден"), 404
+    conn.execute(
+        "UPDATE users SET avatar = ?, avatar_mime = ? WHERE id = ?",
+        (avatar_data, avatar_mime, uid),
+    )
+    conn.commit()
+    conn.close()
+    session["has_avatar"] = True
+    return jsonify(ok=True, avatar_url=url_for("user_avatar", user_id=uid))
 
 
 @app.route("/user/<int:user_id>/avatar")

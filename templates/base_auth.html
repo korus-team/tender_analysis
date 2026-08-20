@@ -12,7 +12,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;display:grid;place-items:center;padding:20px}
 .auth-card{background:#fff;border:1px solid var(--border-2);border-radius:20px;box-shadow:0 12px 44px rgba(16,24,40,.10);padding:38px 36px;width:100%;max-width:400px}
-.auth-brand{font-size:30px;font-weight:800;letter-spacing:-.02em;color:#000000;margin-bottom:14px}
+.auth-brand{margin-bottom:14px}.auth-brand img{display:block;width:90px;height:auto;object-fit:contain}
 .auth-card h1{font-size:22px;font-weight:700;margin-bottom:4px}
 .auth-card .sub{color:var(--text-2);font-size:14px;margin-bottom:24px}
 .auth-flash{padding:11px 15px;border-radius:10px;font-size:14px;font-weight:500;margin-bottom:16px;background:#FDECEA;color:#B23A2A;border:1px solid #F6D2CC}
@@ -29,7 +29,7 @@ body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg)
 </head>
 <body>
 <div class="auth-card">
-  <div class="auth-brand">DAR</div>
+  <div class="auth-brand"><img src="{{ url_for('static', filename='logo.png') }}" alt="DAR"></div>
   {% with msgs = get_flashed_messages() %}{% if msgs %}{% for m in msgs %}<div class="auth-flash">{{ m }}</div>{% endfor %}{% endif %}{% endwith %}
   {% block auth %}{% endblock %}
 </div>
