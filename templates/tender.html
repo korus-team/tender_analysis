@@ -3,7 +3,7 @@
 {% macro source_link(item) %}
   {% if item is mapping and item.document %}
     {% set source = (t.document_analysis.documents | selectattr('name', 'equalto', item.document) | list | first) %}
-    {% if source and source.stored_name %}<a class="recommendation-source" href="{{ url_for('tender_analysis_document', tender_id=t.tender_id, stored_name=source.stored_name) }}" target="_blank" rel="noopener">Открыть источник: {{ item.document }}</a>{% endif %}
+    {% if source and source.stored_name %}<a class="recommendation-source" style="color:#8A8F96;font-weight:400" href="{{ url_for('tender_analysis_document', tender_id=t.tender_id, stored_name=source.stored_name) }}" target="_blank" rel="noopener">Открыть источник: {{ item.document }}</a>{% endif %}
   {% endif %}
 {% endmacro %}
 <a class="back-link" href="{{ back_url }}"><svg class="icon"><use href="#i-arrow-left"/></svg>{{ back_label }}</a>
@@ -20,7 +20,7 @@
   </form>
 </div>
 
-<h1 style="margin-bottom:4px">{{ t.title }}</h1>
+<h1 class="tender-page-title">{{ t.title }}</h1>
 
 <div class="score-head">
   <div class="score-badge {{ t.level }}">{{ t.score }}%</div>
@@ -86,38 +86,47 @@
   </div>
 
   <div class="tender-docs-row">
-    <div class="ibox b-docs">
-      <h3>Документы</h3>
-      {% set kontur_url = t.details.kontur_url if t.details and t.details.kontur_url else (t.url if t.source == 'kontur-excel' else none) %}
-      {% set etp_url = t.details.etp_url if t.details and t.details.etp_url else none %}
-      {% if t.documents %}
-      <ul class="doc-files">
-        {% for d in t.documents %}<li><svg class="icon"><use href="#i-tasks"/></svg><a href="{{ d.url }}" target="_blank">{{ d.name }}</a>{% if d.size %}<span class="sz">{{ d.size }}</span>{% endif %}</li>{% endfor %}
-      </ul>
-      <div class="doc-btns">
-        {% if kontur_url %}<a class="btn-sm" href="{{ kontur_url }}" target="_blank" rel="noopener">Открыть в Контур.Закупках</a>{% elif t.url %}<a class="btn-sm" href="{{ t.url }}" target="_blank" rel="noopener">Открыть источник</a>{% endif %}
-        {% if etp_url and etp_url != kontur_url %}<a class="btn-sm" href="{{ etp_url }}" target="_blank" rel="noopener">Открыть на площадке</a>{% endif %}
-        <button class="btn-sm teal" type="button" onclick="alert('Анализ документов ИИ будет доступен после подключения ИИ')">Прочесть документы</button>
-        <button class="btn-sm" type="button" onclick="openTenderModal('documentAnalysisModal')">Загрузить файлы ИИ</button>
+    <div class="ibox b-docs docs-card-fixed">
+      <div class="docs-card-fixed__top">
+        <h3>Документы</h3>
+        {% set kontur_url = t.details.kontur_url if t.details and t.details.kontur_url else (t.url if t.source == 'kontur-excel' else none) %}
+        {% set etp_url = t.details.etp_url if t.details and t.details.etp_url else none %}
+        {% if t.documents %}
+        <ul class="doc-files">
+          {% for d in t.documents %}<li><svg class="icon"><use href="#i-tasks"/></svg><a href="{{ d.url }}" target="_blank">{{ d.name }}</a>{% if d.size %}<span class="sz">{{ d.size }}</span>{% endif %}</li>{% endfor %}
+        </ul>
+        {% else %}
+        <p>Документы не приложены к выгрузке. Откройте карточку в Контур.Закупках или на исходной площадке; если там нужна авторизация, запросите файлы у коллег письмом.</p>
+        {% endif %}
       </div>
-      {% else %}
-      <p>Документы не приложены к выгрузке. Откройте карточку в Контур.Закупках или на исходной площадке; если там нужна авторизация, запросите файлы у коллег письмом.</p>
-      <div class="doc-btns" style="margin-top:12px">
-        {% if kontur_url %}<a class="btn-sm" href="{{ kontur_url }}" target="_blank" rel="noopener">Открыть в Контур.Закупках</a>{% elif t.url %}<a class="btn-sm" href="{{ t.url }}" target="_blank" rel="noopener">Открыть источник</a>{% endif %}
-        {% if etp_url and etp_url != kontur_url %}<a class="btn-sm" href="{{ etp_url }}" target="_blank" rel="noopener">Открыть на площадке</a>{% endif %}
-        <button class="btn-sm" type="button" onclick="document.getElementById('mailForm').style.display='flex'">Запросить документы</button>
-        <button class="btn-sm" type="button" onclick="openTenderModal('documentAnalysisModal')">Загрузить файлы ИИ</button>
-      </div>
-      <div class="mail-form" id="mailForm" style="display:none">
-        <button class="mail-send" type="button" onclick="alert('Отправка на почту будет доступна после подключения почты (SMTP)')"><svg class="icon"><use href="#i-arrow-right"/></svg>Отправить</button>
-        <div class="mail-fields">
-          <div class="mail-row"><span class="lab">Кому</span><input placeholder="tenders@company.ru"></div>
-          <div class="mail-row"><span class="lab">Копия</span><input placeholder="—"></div>
-          <div class="mail-row"><span class="lab">Тема</span><input value="Запрос документации по закупке {{ t.number or t.tender_id }}"></div>
-          <textarea>Здравствуйте! Просьба скачать документацию по закупке «{{ t.title }}» ({% if etp_url %}{{ etp_url }}{% elif kontur_url %}{{ kontur_url }}{% else %}{{ t.url }}{% endif %}) и переслать нам. Спасибо!</textarea>
+
+      <div class="docs-card-fixed__bottom">
+        <div class="doc-btns">
+          {% if t.documents %}
+            {% if kontur_url %}<a class="btn-sm" href="{{ kontur_url }}" target="_blank" rel="noopener">Открыть в Контур.Закупках</a>{% elif t.url %}<a class="btn-sm" href="{{ t.url }}" target="_blank" rel="noopener">Открыть источник</a>{% endif %}
+            {% if etp_url and etp_url != kontur_url %}<a class="btn-sm" href="{{ etp_url }}" target="_blank" rel="noopener">Открыть на площадке</a>{% endif %}
+            <button class="btn-sm teal" type="button" onclick="alert('Анализ документов ИИ будет доступен после подключения ИИ')">Прочесть документы</button>
+            <button class="btn-sm" type="button" onclick="openTenderModal('documentAnalysisModal')">Загрузить файлы ИИ</button>
+          {% else %}
+            {% if kontur_url %}<a class="btn-sm" href="{{ kontur_url }}" target="_blank" rel="noopener">Открыть в Контур.Закупках</a>{% elif t.url %}<a class="btn-sm" href="{{ t.url }}" target="_blank" rel="noopener">Открыть источник</a>{% endif %}
+            {% if etp_url and etp_url != kontur_url %}<a class="btn-sm" href="{{ etp_url }}" target="_blank" rel="noopener">Открыть на площадке</a>{% endif %}
+            <button class="btn-sm" type="button" onclick="document.getElementById('mailForm').style.display='flex'">Запросить документы</button>
+            <button class="btn-sm" type="button" onclick="openTenderModal('documentAnalysisModal')">Загрузить файлы ИИ</button>
+          {% endif %}
         </div>
+
+        {% if not t.documents %}
+        <div class="mail-form" id="mailForm" style="display:none">
+          <button class="mail-send" type="button" onclick="alert('Отправка на почту будет доступна после подключения почты (SMTP)')"><svg class="icon"><use href="#i-arrow-right"/></svg>Отправить</button>
+          <div class="mail-fields">
+            <div class="mail-row"><span class="lab">Кому</span><input placeholder="tenders@company.ru"></div>
+            <div class="mail-row"><span class="lab">Копия</span><input placeholder="—"></div>
+            <div class="mail-row"><span class="lab">Тема</span><input value="Запрос документации по закупке {{ t.number or t.tender_id }}"></div>
+            <textarea>Здравствуйте! Просьба скачать документацию по закупке «{{ t.title }}» ({% if etp_url %}{{ etp_url }}{% elif kontur_url %}{{ kontur_url }}{% else %}{{ t.url }}{% endif %}) и переслать нам. Спасибо!</textarea>
+          </div>
+        </div>
+        {% endif %}
       </div>
-      {% endif %}
     </div>
     <div class="ibox b-pit">
       <h3>Подводные камни на основе документов</h3>

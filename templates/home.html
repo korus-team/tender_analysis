@@ -13,10 +13,12 @@
   </div>
 </div>
 
-<div id="konturProgress" hidden style="margin:0 0 18px;padding:14px 16px;border:1px solid #c7d9d7;border-radius:12px;background:#f4fbfa">
-  <b id="konturProgressTitle">Читаем Excel…</b>
-  <div style="height:8px;border-radius:999px;background:#dce9e7;margin:10px 0;overflow:hidden"><div id="konturProgressBar" style="height:100%;width:0;background:#168574;transition:width .2s"></div></div>
-  <div id="konturProgressText">Найдено: 0 · LLM оценено: 0 · Осталось: 0</div>
+<div id="konturProgress" class="kontur-progress" hidden>
+  <b id="konturProgressTitle" class="kontur-progress__title">Читаем Excel…</b>
+  <div class="kontur-progress__track">
+    <div id="konturProgressBar" class="kontur-progress__bar"></div>
+  </div>
+  <div id="konturProgressText" class="kontur-progress__text">Найдено: 0 · ИИ оценено: 0 · Осталось: 0</div>
 </div>
 
 <div class="stat-grid cols-4">
@@ -66,7 +68,7 @@
 
 {% if tenders %}
 {% for t in tenders %}
-<div class="tcard">
+<div class="tcard{% if taken_by.get(t.tender_id) %} tcard--taken{% endif %}">
   <div class="tcard-main">
     <div class="ttags">
       {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
@@ -126,7 +128,7 @@
           var statusResponse=await fetch('/import/kontur/'+data.job_id+'/status'), job=await statusResponse.json();
           var found=job.found||0, processed=job.processed||0, remaining=job.remaining||0;
           bar.style.width=(found ? Math.round(processed/found*100) : 0)+'%';
-          text.textContent='Найдено: '+found+' · LLM оценено: '+(job.llm_scored||0)+' · Осталось: '+remaining;
+          text.textContent='Найдено: '+found+' · ИИ оценено: '+(job.llm_scored||0)+' · Осталось: '+remaining;
           if(job.status==='complete'){ clearInterval(timer); title.textContent='Excel загружен'; bar.style.width='100%'; setTimeout(function(){location.reload()},700); }
           if(job.status==='error'){ clearInterval(timer); title.textContent='Ошибка импорта'; text.textContent=job.error||'Не удалось обработать файл.'; }
         },500);
