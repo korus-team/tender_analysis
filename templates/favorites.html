@@ -23,7 +23,7 @@
 
 {% if tenders %}
 {% for t in tenders %}
-<div class="tcard">
+<div class="tcard{% if taken_by.get(t.tender_id) %} tcard--taken{% endif %}">
   <div class="tcard-main">
     <div class="ttags">
       {% if t.stage %}<span class="ttag ttag-{{ t.stage }}">{{ t.stage_label }}</span>{% endif %}

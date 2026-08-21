@@ -2409,6 +2409,86 @@ a[aria-current="page"]{
 }
 </style>
 
+
+<style>
+/* =================== EXACT TENDER UI PATCH =================== */
+
+/* Заголовок карточки тендера: 24px / 500 и чуть больше воздуха между строками */
+h1.tender-page-title,
+.main h1.tender-page-title{
+  font-size:24px !important;
+  font-weight:500 !important;
+  line-height:1.42 !important;
+  letter-spacing:-.01em !important;
+}
+
+/* Метка "Взято: ..." ровно по высоте как кнопка "Убрать метку" */
+.t-actions-top .ttag-taken{
+  height:42px !important;
+  min-height:42px !important;
+  padding:0 16px !important;
+  display:inline-flex !important;
+  align-items:center !important;
+  border-radius:12px !important;
+  font-size:14px !important;
+  font-weight:600 !important;
+  line-height:1 !important;
+}
+
+/* Если тендер занят — только широкий цветной прямоугольник слева */
+.tcard.tcard--taken{
+  position:relative;
+  overflow:hidden;
+  padding-left:46px !important; /* исходные 22px + 24px цветной полосы */
+}
+.tcard.tcard--taken::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:0;
+  bottom:0;
+  width:24px;
+  background:#DABDFF;
+}
+
+/* При больших результатах анализа правые блоки не становятся узкими */
+.tender-content-grid,
+.tender-docs-row{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+}
+
+/* Кнопка рекомендаций — в цвет блока "Почему подходит?" */
+.analysis-open-btn{
+  background:#BEE6FF !important;
+  border-color:#BEE6FF !important;
+  color:#000000 !important;
+}
+.analysis-open-btn:hover{
+  background:#BEE6FF !important;
+}
+
+/* В модалке рекомендаций: маркеры DABDFF, ссылки серые */
+.recommendations-list li::marker{
+  color:#DABDFF !important;
+}
+.recommendations-list .recommendation-source,
+.recommendations-list a.recommendation-source{
+  color:#8A8F96 !important;
+  font-weight:400 !important;
+}
+.recommendations-list .recommendation-source:hover,
+.recommendations-list a.recommendation-source:hover{
+  color:#6B7178 !important;
+}
+
+@media(max-width:1150px){
+  .tender-content-grid,
+  .tender-docs-row{
+    grid-template-columns:1fr !important;
+  }
+}
+</style>
+
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
