@@ -154,6 +154,7 @@
     <h2 id="documentAnalysisTitle">Анализ документов ИИ</h2>
     <p>Добавьте до 20 файлов: TXT, MD, CSV, DOCX или PDF. Файлы сохраняются в карточке тендера, чтобы открыть источник каждого совета.</p>
     <form id="documentAnalysisForm" method="post" action="{{ url_for('tender_analyze_documents', tender_id=t.tender_id) }}" enctype="multipart/form-data">
+      <input type="hidden" name="ret" value="{{ request.args.get('ret', '') }}">
       <label class="file-drop" for="tenderDocuments">
         <input id="tenderDocuments" name="documents" type="file" multiple required accept=".txt,.md,.csv,.docx,.pdf" onchange="showDocumentNames(this)">
         <span>Выберите файлы или перетащите их сюда</span>

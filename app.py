@@ -1115,6 +1115,9 @@ def tender_analyze_documents(tender_id):
     if 'result' in locals():
         source = "OpenAI" if result["analyzer"] == "openai" else "локальный экспресс-анализ"
         flash(f"Документы проанализированы: {source}.")
+    ret = (request.form.get("ret") or "").strip()
+    if ret.startswith("/") and not ret.startswith("//") and "\\" not in ret:
+        return redirect(url_for("tender", tender_id=tender_id, ret=ret))
     return redirect(url_for("tender", tender_id=tender_id))
 
 
