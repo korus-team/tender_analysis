@@ -12,7 +12,8 @@ from openpyxl import Workbook
 import storage
 import directions
 import company_size
-from kontur_excel import KonturExcelError, import_kontur_xlsx, parse_kontur_xlsx
+from kontur_excel import (KonturExcelError, import_kontur_xlsx, parse_kontur_xlsx,
+                          recheck_kontur_companies)
 
 
 HEADERS = [
@@ -191,6 +192,76 @@ class KonturExcelTests(unittest.TestCase):
             details = json.loads(tender["details"])
             self.assertEqual(details["customer_turnover_status"],
                              "not_applicable_government")
+            conn.close()
+
+    def test_priority_company_bypasses_revenue_check_by_exact_inn(self):
+        class MustNotCallRevenueClient:
+            def lookup(self, inn, company_name=None):
+                raise AssertionError("приоритетная компания не должна проверяться по обороту")
+
+            def lookup_by_name(self, company_name=None):
+                raise AssertionError("приоритетная компания не должна искаться по названию")
+
+        with tempfile.TemporaryDirectory() as tmp:
+            conn = storage.connect(str(Path(tmp) / "test.db"))
+            conn.execute(
+                "CREATE TABLE priority_companies ("
+                "id INTEGER PRIMARY KEY, name TEXT NOT NULL, inn TEXT, created_at TEXT)"
+            )
+            conn.execute(
+                "INSERT INTO priority_companies (name, inn) VALUES (?, ?)",
+                ("Название в списке может отличаться", "7709832989"),
+            )
+            conn.commit()
+
+            summary = import_kontur_xlsx(
+                workbook_bytes(), conn=conn,
+                revenue_client=MustNotCallRevenueClient(),
+                verified_registry_path=str(Path(tmp) / "verified.csv"),
+            )
+
+            self.assertEqual(summary["kept"], 1)
+            self.assertEqual(summary["kept_priority_company"], 1)
+            tender = storage.get_tender(conn, "kontur:4567280_458")
+            self.assertIn(
+                "Заказчик входит в список приоритетных компаний",
+                tender["reasons"],
+            )
+            details = json.loads(tender["details"])
+            self.assertEqual(
+                details["customer_turnover_status"], "not_applicable_priority"
+            )
+            rechecked = recheck_kontur_companies(
+                conn=conn, revenue_client=MustNotCallRevenueClient(),
+                verified_registry_path=str(Path(tmp) / "verified.csv"),
+            )
+            self.assertEqual(rechecked["removed"], 0)
+            self.assertEqual(rechecked["sources"]["priority-company-exempt"], 1)
+            self.assertIsNotNone(storage.get_tender(conn, "kontur:4567280_458"))
+            conn.close()
+
+    def test_same_company_name_with_other_inn_does_not_get_priority_exemption(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            conn = storage.connect(str(Path(tmp) / "test.db"))
+            conn.execute(
+                "CREATE TABLE priority_companies ("
+                "id INTEGER PRIMARY KEY, name TEXT NOT NULL, inn TEXT, created_at TEXT)"
+            )
+            conn.execute(
+                "INSERT INTO priority_companies (name, inn) VALUES (?, ?)",
+                ("ООО «Тестовая крупная компания»", "7736050003"),
+            )
+            conn.commit()
+
+            summary = import_kontur_xlsx(
+                workbook_bytes(), conn=conn,
+                revenue_client=FakeRevenueClient(revenue=5_000_000_000),
+                verified_registry_path=str(Path(tmp) / "verified.csv"),
+            )
+
+            self.assertEqual(summary["kept"], 0)
+            self.assertEqual(summary["kept_priority_company"], 0)
+            self.assertEqual(summary["skipped_small_company"], 1)
             conn.close()
 
     def test_unverified_company_is_removed(self):

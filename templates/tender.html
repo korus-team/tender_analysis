@@ -14,6 +14,7 @@
   {% else %}
     <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-label" type="submit"><svg class="icon"><use href="#i-plus"/></svg>Добавить метку</button></form>
   {% endif %}
+  {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
   {% if taken_by.get(t.tender_id) %}<span class="ttag ttag-taken">Взято: {{ taken_by[t.tender_id] }}</span>{% endif %}
   <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}" style="margin-left:auto">
     <button class="tcard-heart {{ 'on' if t.tender_id in my_fav_ids }}" type="submit" aria-label="В избранное"><svg class="icon"><use href="#i-heart"/></svg></button>

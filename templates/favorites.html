@@ -26,6 +26,7 @@
 <div class="tcard">
   <div class="tcard-main">
     <div class="ttags">
+      {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
       {% if t.stage %}<span class="ttag ttag-{{ t.stage }}">{{ t.stage_label }}</span>{% endif %}
       {% for s in t.savers %}<span class="ttag ttag-metka">{{ s }}</span>{% endfor %}
       {% if t.expired %}<span class="ttag ttag-expired">Срок подачи прошёл</span>{% endif %}

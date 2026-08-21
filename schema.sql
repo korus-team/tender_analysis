@@ -138,8 +138,8 @@ CREATE TABLE IF NOT EXISTS tender_document_analyses (
 
 
 -- ----------------------------------------------------------------------------
---  Приоритетные компании (их тендеры подсвечиваются). Создаётся app.py и
---  предзаполняется списком крупных компаний при первом запуске.
+--  Приоритетные компании (их тендеры подсвечиваются и не фильтруются по обороту).
+--  Список заполняется пользователем через Excel; сопоставление идёт по ИНН.
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS priority_companies (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -147,6 +147,7 @@ CREATE TABLE IF NOT EXISTS priority_companies (
     inn        TEXT,
     created_at TEXT
 );
+CREATE INDEX IF NOT EXISTS priority_companies_inn_idx ON priority_companies(inn);
 
 
 -- ----------------------------------------------------------------------------

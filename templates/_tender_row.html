@@ -3,6 +3,7 @@
     <div class="tmain">
       <div class="ttitle">{{ t.title }}</div>
       <div class="ttags">
+        {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
         {% if t.is_license %}<span class="ttag ttag-license">Лицензионный</span>{% endif %}
         {% if t.ptype %}<span class="ttag ttag-{{ t.ptype }}">{{ t.ptype_label }}</span>{% endif %}
         {% if taken_by.get(t.tender_id) %}<span class="ttag ttag-taken">Взято: {{ taken_by[t.tender_id] }}</span>{% endif %}

@@ -17,6 +17,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 
 import company_size
 import directions
+import priority_companies
 import storage
 from icp_config import load_icp
 from scoring import score_tender, score_tender_llm
@@ -106,7 +107,8 @@ def _without_revenue_evidence(reasons, labels) -> tuple[list[str], list[str]]:
         str(value).lower().startswith("оборот заказчика") or
         str(value).lower().startswith("размер компании-заказчика") or
         "не удалось подтвердить" in str(value).lower() or
-        str(value).lower().startswith("компания входит в локальный реестр")
+        str(value).lower().startswith("компания входит в локальный реестр") or
+        str(value).lower().startswith("заказчик входит в список приоритетных")
     )]
     clean_labels = [str(value) for value in (labels or []) if str(value) not in {
         "оборот подтверждён", "оборот не подтверждён",
@@ -351,6 +353,7 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
     skipped_small = 0
     skipped_unverified = 0
     kept_government = 0
+    kept_priority = 0
     revenue_api_checks = 0
     revenue_cache_hits = 0
     skipped_expired = 0
@@ -359,6 +362,7 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
     found = len(parsed["items"])
     processed = 0
     llm_scored = 0
+    priority_inns = priority_companies.priority_inns(conn)
 
     def report_progress() -> None:
         if progress_callback is not None:
@@ -387,12 +391,13 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
                 except (TypeError, ValueError):
                     details = {}
             status = (details or {}).get("customer_turnover_status")
+            is_priority = priority_companies.is_priority_tender(details, priority_inns)
             old_unverified_text = any(
                 "нужно подтвердить" in str(reason).lower() or
                 "не удалось подтвердить" in str(reason).lower()
                 for reason in reasons
             )
-            if (not _is_government(details) and
+            if (not _is_government(details) and not is_priority and
                     (status in {"no_data", "not_found", "invalid_inn", "invalid_name",
                                 "name_mismatch"} or
                      "оборот не подтверждён" in labels or old_unverified_text)):
@@ -416,9 +421,12 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
                 continue
 
             is_government = _is_government(details)
+            is_priority = priority_companies.is_priority_tender(details, priority_inns)
             revenue_check = None
             if is_government:
                 kept_government += 1
+            elif is_priority:
+                kept_priority += 1
             else:
                 revenue_check = company_size.check_revenue_by_inn(
                     conn,
@@ -467,6 +475,22 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
                     "customer_turnover_status": "not_applicable_government",
                     "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
                 })
+            elif is_priority:
+                item["reasons"] = [
+                    "Заказчик входит в список приоритетных компаний",
+                    *result.reasons,
+                ]
+                item["labels"] = list(result.labels)
+                details.update({
+                    "customer_revenue_rub": None,
+                    "customer_turnover_rub": None,
+                    "customer_revenue_year": None,
+                    "customer_turnover_year": None,
+                    "customer_revenue_source": "priority-company-exempt",
+                    "customer_turnover_source": "priority-company-exempt",
+                    "customer_turnover_status": "not_applicable_priority",
+                    "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
+                })
             else:
                 revenue_reason, revenue_label = _revenue_evidence(revenue_check)
                 item["reasons"] = [revenue_reason, *result.reasons]
@@ -506,6 +530,7 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
             "kept_unverified_company": 0,
             "skipped_unverified_company": skipped_unverified,
             "kept_government": kept_government,
+            "kept_priority_company": kept_priority,
             "revenue_api_checks": revenue_api_checks,
             "revenue_cache_hits": revenue_cache_hits,
             "skipped_expired": skipped_expired,
@@ -535,6 +560,7 @@ def recheck_kontur_companies(conn=None,
     now = now or datetime.now()
     rows = [row for row in storage.query_tenders(conn, limit=None)
             if row.get("source") == SOURCE_NAME]
+    priority_inns = priority_companies.priority_inns(conn)
     removed_ids: list[str] = []
     kept = 0
     sources: dict[str, int] = {}
@@ -570,6 +596,34 @@ def recheck_kontur_companies(conn=None,
                 )
                 kept += 1
                 sources["government-exempt"] = sources.get("government-exempt", 0) + 1
+            elif priority_companies.is_priority_tender(details, priority_inns):
+                reasons, labels = _without_revenue_evidence(
+                    tender.get("reasons"), tender.get("labels"),
+                )
+                priority_reason = "Заказчик входит в список приоритетных компаний"
+                reasons = [priority_reason, *[reason for reason in reasons
+                                              if reason != priority_reason]]
+                details.update({
+                    "customer_revenue_rub": None,
+                    "customer_turnover_rub": None,
+                    "customer_revenue_year": None,
+                    "customer_turnover_year": None,
+                    "customer_revenue_source": "priority-company-exempt",
+                    "customer_turnover_source": "priority-company-exempt",
+                    "customer_turnover_status": "not_applicable_priority",
+                    "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
+                })
+                conn.execute(
+                    "UPDATE tenders SET reasons = ?, labels = ?, details = ? "
+                    "WHERE tender_id = ?",
+                    (json.dumps(reasons, ensure_ascii=False),
+                     json.dumps(labels, ensure_ascii=False),
+                     json.dumps(details, ensure_ascii=False), tender["tender_id"]),
+                )
+                kept += 1
+                sources["priority-company-exempt"] = (
+                    sources.get("priority-company-exempt", 0) + 1
+                )
             else:
                 check = company_size.check_revenue_by_inn(
                     conn, details.get("customer_inn"), tender.get("customer"),
