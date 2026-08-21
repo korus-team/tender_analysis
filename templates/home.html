@@ -87,7 +87,7 @@
       {% if t.deadline_reminder %}<b class="soon">{{ t.time_left_fmt }}</b>{% endif %}
     </div>
   </div>
-  <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
+  <form class="favorite-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
     <button class="tcard-heart {{ 'on' if t.tender_id in my_fav_ids }}" type="submit" aria-label="В избранное"><svg class="icon"><use href="#i-heart"/></svg></button>
   </form>
 </div>

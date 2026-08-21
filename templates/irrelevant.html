@@ -16,6 +16,7 @@
     <div class="ttags">
       {% if t.ptype=='gov' %}<span class="ttag ttag-gov2">Государственный</span>{% elif t.ptype=='com' %}<span class="ttag ttag-com2">Коммерческий</span>{% endif %}
       {% if t.is_license %}<span class="ttag ttag-license2">Лицензионный</span>{% endif %}
+      {% if t.law %}<span class="ttag ttag-law">{{ t.law }}</span>{% endif %}
       {% if t.np %}<span class="ttag ttag-np">Не пошли</span>{% endif %}
     </div>
     <div class="tcard-title"><a href="{{ url_for('tender', tender_id=t.tender_id, ret='/irrelevant') }}">{{ t.title }}</a></div>

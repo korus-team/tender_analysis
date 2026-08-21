@@ -28,6 +28,7 @@
     <div class="ttags">
       {% if t.stage %}<span class="ttag ttag-{{ t.stage }}">{{ t.stage_label }}</span>{% endif %}
       {% for s in t.savers %}<span class="ttag ttag-metka">{{ s }}</span>{% endfor %}
+      {% if t.law %}<span class="ttag ttag-law">{{ t.law }}</span>{% endif %}
       {% if t.expired %}<span class="ttag ttag-expired">Срок подачи прошёл</span>{% endif %}
     </div>
     <div class="tcard-title"><a href="{{ url_for('tender', tender_id=t.tender_id, ret='/favorites') }}">{{ t.title }}</a></div>
@@ -46,7 +47,7 @@
     <div class="tcard-price">{{ t.price_fmt }}</div>
     <div class="tcard-deadline">{% if t.expired %}<span>Размещение завершено</span>{% elif t.deadline_date_fmt != '—' %}<span>Подача заявок<br>до {{ t.deadline_date_fmt }}<br>{{ t.deadline_time_fmt }}</span>{% if t.deadline_reminder %}<b class="soon">{{ t.time_left_fmt }}</b>{% endif %}{% else %}<span>Срок подачи<br>не указан</span>{% endif %}</div>
   </div>
-  <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
+  <form class="favorite-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
     <button class="tcard-heart on" type="submit" aria-label="Убрать из избранного"><svg class="icon"><use href="#i-heart"/></svg></button>
   </form>
 </div>
