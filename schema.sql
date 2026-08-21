@@ -111,6 +111,20 @@ CREATE TABLE IF NOT EXISTS tender_meta (
     stage       TEXT
 );
 
+-- Результаты анализа загруженной документации. Исходные файлы и их текст
+-- намеренно не хранятся: остаются только имена файлов и структурированный итог.
+CREATE TABLE IF NOT EXISTS tender_document_analyses (
+    tender_id       TEXT PRIMARY KEY,
+    documents       TEXT NOT NULL,
+    risks           TEXT NOT NULL,
+    pitfalls        TEXT NOT NULL,
+    recommendations TEXT NOT NULL,
+    openness        TEXT,
+    summary         TEXT,
+    analyzer        TEXT NOT NULL,
+    analyzed_at     TEXT NOT NULL
+);
+
 
 -- ----------------------------------------------------------------------------
 --  Приоритетные компании (их тендеры подсвечиваются). Создаётся app.py и

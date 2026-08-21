@@ -9,6 +9,7 @@ enrich, icp_config) — эти файлы менять не нужно.
 """
 from __future__ import annotations
 
+import json
 import math
 import os
 import re
@@ -20,7 +21,7 @@ from functools import wraps
 from threading import Lock
 
 from flask import (Flask, Response, abort, flash, jsonify, redirect, render_template,
-                   request, session, url_for)
+                   request, send_from_directory, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import storage
@@ -32,6 +33,8 @@ from scoring import theme_score
 from icp_config import load_icp, save_icp
 from kontur_excel import KonturExcelError, import_kontur_xlsx
 import notification_service
+from document_analysis import (DocumentAnalysisError, analyze as analyze_documents,
+                               document_upload_dir, persist_uploads, read_uploads)
 
 app = Flask(__name__)
 app.secret_key = "dar-tender-assistant-local"
@@ -558,6 +561,51 @@ def _ensure_settings_table():
     conn.close()
 
 
+def _ensure_document_analysis_table():
+    """Результаты ИИ-анализа: без хранения самих загруженных файлов."""
+    conn = storage.connect()
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS tender_document_analyses ("
+        "tender_id TEXT PRIMARY KEY, documents TEXT NOT NULL, risks TEXT NOT NULL, "
+        "pitfalls TEXT NOT NULL, recommendations TEXT NOT NULL, openness TEXT, "
+        "summary TEXT, analyzer TEXT NOT NULL, analyzed_at TEXT NOT NULL)")
+    conn.commit()
+    conn.close()
+
+
+def _document_analysis(conn, tender_id):
+    row = conn.execute(
+        "SELECT * FROM tender_document_analyses WHERE tender_id = ?", (tender_id,)
+    ).fetchone()
+    if not row:
+        return None
+    result = dict(row)
+    for key in ("documents", "risks", "pitfalls", "recommendations"):
+        try:
+            result[key] = json.loads(result[key] or "[]")
+        except (TypeError, ValueError):
+            result[key] = []
+    return result
+
+
+def _save_document_analysis(conn, tender_id, documents, result):
+    conn.execute(
+        "INSERT INTO tender_document_analyses "
+        "(tender_id, documents, risks, pitfalls, recommendations, openness, summary, analyzer, analyzed_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(tender_id) DO UPDATE SET documents=excluded.documents, risks=excluded.risks, "
+        "pitfalls=excluded.pitfalls, recommendations=excluded.recommendations, openness=excluded.openness, "
+        "summary=excluded.summary, analyzer=excluded.analyzer, analyzed_at=excluded.analyzed_at",
+        (tender_id, json.dumps(documents, ensure_ascii=False),
+         json.dumps(result["risks"], ensure_ascii=False),
+         json.dumps(result["pitfalls"], ensure_ascii=False),
+         json.dumps(result["recommendations"], ensure_ascii=False),
+         result["openness"], result["summary"], result["analyzer"],
+         datetime.now().isoformat(timespec="seconds")),
+    )
+    conn.commit()
+
+
 def _law_tag(t):
     """Тег закона по тексту закупки (лёгкая эвристика, где закон упомянут)."""
     txt = ((t.get("title") or "") + " " + (t.get("subject") or "")).lower()
@@ -609,6 +657,7 @@ _ensure_auth_tables()
 _ensure_meta_table()
 _ensure_priorities_table()
 _ensure_settings_table()
+_ensure_document_analysis_table()
 _notification_conn = storage.connect()
 notification_service.ensure_schema(_notification_conn)
 notification_service.prune_ineligible_site_notifications(
@@ -1016,8 +1065,10 @@ def tender(tender_id):
         return redirect(url_for("tenders"))
     row = conn.execute("SELECT relevance, not_pursued FROM tender_meta WHERE tender_id = ?",
                        (tender_id,)).fetchone()
+    doc_analysis = _document_analysis(conn, tender_id)
     conn.close()
     t = _annotate([t])[0]
+    t["document_analysis"] = doc_analysis
     override = row["relevance"] if row else None
     not_pursued = bool(row["not_pursued"]) if row else False
     auto_rel = directions.is_relevant(t)
@@ -1039,6 +1090,48 @@ def tender(tender_id):
     return render_template("tender.html", active="tenders", t=t, back_url=back_url,
                            back_label=back_label, override=override, eff_rel=eff_rel,
                            not_pursued=not_pursued)
+
+
+@app.route("/tender/<tender_id>/analyze-documents", methods=["POST"])
+def tender_analyze_documents(tender_id):
+    """Принимает набор текстовых документов, анализирует и сохраняет только результат."""
+    conn = storage.connect()
+    exists = conn.execute("SELECT 1 FROM tenders WHERE tender_id = ?", (tender_id,)).fetchone()
+    if not exists:
+        conn.close()
+        abort(404)
+    try:
+        documents, text = read_uploads(request.files.getlist("documents"))
+        result = analyze_documents(
+            text, request.form.get("include_recommendations") == "1",
+            [document["name"] for document in documents],
+        )
+        documents = persist_uploads(documents, tender_id)
+        _save_document_analysis(conn, tender_id, documents, result)
+    except DocumentAnalysisError as exc:
+        flash(str(exc), "err")
+    finally:
+        conn.close()
+    if 'result' in locals():
+        source = "OpenAI" if result["analyzer"] == "openai" else "локальный экспресс-анализ"
+        flash(f"Документы проанализированы: {source}.")
+    return redirect(url_for("tender", tender_id=tender_id))
+
+
+@app.route("/tender/<tender_id>/analysis-document/<stored_name>")
+def tender_analysis_document(tender_id, stored_name):
+    """Открывает только файл, принадлежащий сохранённому анализу тендера."""
+    conn = storage.connect()
+    record = _document_analysis(conn, tender_id)
+    conn.close()
+    documents = record.get("documents", []) if record else []
+    document = next((item for item in documents if item.get("stored_name") == stored_name), None)
+    if not document:
+        abort(404)
+    return send_from_directory(
+        document_upload_dir(tender_id), stored_name,
+        as_attachment=False, download_name=document.get("name") or stored_name,
+    )
 
 
 @app.route("/favorites")
