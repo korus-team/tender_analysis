@@ -48,7 +48,6 @@
     <div class="ibox b-desc">
     <h3>Описание проекта</h3>
     <p>{{ t.subject or 'Описание не указано на площадке. Полный текст обычно лежит в файле «Описание объекта закупки» — см. документы ниже.' }}</p>
-    {% if t.details and t.details.eis_url %}<p style="margin-top:10px"><a href="{{ t.details.eis_url }}" target="_blank" rel="noopener" class="pill-eis">{% if t.details.eis_number %}ЕИС {{ t.details.eis_number }}{% else %}Открыть в ЕИС{% endif %}</a></p>{% endif %}
   </div>
 
     <div class="ibox b-why">
@@ -121,9 +120,11 @@
       <form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}"><input type="hidden" name="value" value="relevant"><button class="btn-ghost" type="submit">Это наш профиль</button></form>
     {% endif %}
     {% if override %}<form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}"><input type="hidden" name="value" value="auto"><button class="btn-ghost" type="submit">Вернуть авто-оценку</button></form>{% endif %}
+    {% if not (ret and ret.startswith('/irrelevant')) %}
     <form method="post" action="{{ url_for('toggle_not_pursued', tender_id=t.tender_id) }}" style="margin-left:auto">
       <button class="btn-ghost" type="submit">{{ 'Вернуть в работу' if not_pursued else 'Отметить «не пошли»' }}</button>
     </form>
+    {% endif %}
     <form method="post" action="{{ url_for('delete_tender_route', tender_id=t.tender_id) }}" onsubmit="return confirm('Удалить тендер из базы?')">
       <button class="btn-danger" type="submit">Удалить</button>
     </form>
