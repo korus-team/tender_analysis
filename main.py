@@ -19,7 +19,7 @@ import storage
 import sources
 import company_size
 import directions
-from scoring import score_tender
+from scoring import score_tender, score_tender_llm
 from icp_config import load_icp
 
 try:
@@ -42,6 +42,11 @@ def _days_left(deadline: str | None):
 def run_ingest(max_pages: int = 50, use_llm: bool = False, write_json: bool = True) -> dict:
     icp = load_icp()
     conn = storage.connect()
+    llm_scorer = None
+    if use_llm:
+        from LLM_scoring import OpenAITenderScorer
+
+        llm_scorer = OpenAITenderScorer()
 
     # чистим просроченные (дедлайн уже прошёл) — они больше не актуальны
     now_iso = datetime.now().isoformat(timespec="seconds")
@@ -73,7 +78,11 @@ def run_ingest(max_pages: int = 50, use_llm: bool = False, write_json: bool = Tr
             continue
         t = dict(t)
         t["days_left"] = _days_left(t.get("deadline"))
-        res = score_tender(t, icp)
+        res = (
+            score_tender_llm(t, icp, scorer=llm_scorer)
+            if llm_scorer is not None
+            else score_tender(t, icp)
+        )
         t["score"] = res.score
         t["verdict"] = res.verdict
         t["reasons"] = res.reasons
@@ -112,15 +121,24 @@ def run_ingest(max_pages: int = 50, use_llm: bool = False, write_json: bool = Tr
     }
 
 
-def rescore_all(icp: dict | None = None) -> int:
+def rescore_all(icp: dict | None = None, use_llm: bool = False) -> int:
     icp = icp or load_icp()
     conn = storage.connect()
+    llm_scorer = None
+    if use_llm:
+        from LLM_scoring import OpenAITenderScorer
+
+        llm_scorer = OpenAITenderScorer()
     rows = storage.query_tenders(conn, limit=None)
     n = 0
     for t in rows:
         t = dict(t)
         t["days_left"] = _days_left(t.get("deadline"))
-        res = score_tender(t, icp)
+        res = (
+            score_tender_llm(t, icp, scorer=llm_scorer)
+            if llm_scorer is not None
+            else score_tender(t, icp)
+        )
         storage.update_score(conn, t["tender_id"], res.score, res.verdict,
                              res.reasons, res.labels)
         n += 1

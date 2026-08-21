@@ -4,13 +4,19 @@
 <div class="topbar">
   <div><h1>Состояние на {{ now }}</h1></div>
   <div class="topbar-right">
-    <form method="post" action="{{ url_for('import_kontur') }}" enctype="multipart/form-data">
+    <form id="konturImportForm" method="post" action="{{ url_for('import_kontur') }}" enctype="multipart/form-data">
       <label class="btn-label" for="konturFile"><svg class="icon"><use href="#i-plus"/></svg>Загрузить Excel</label>
-      <input id="konturFile" type="file" name="kontur_file" accept=".xlsx" hidden onchange="this.form.submit()">
+      <input id="konturFile" type="file" name="kontur_file" accept=".xlsx" hidden>
     </form>
     <form method="post" action="{{ url_for('ingest') }}"><button class="btn-collect" type="submit"><svg class="icon"><use href="#i-search"/></svg>Собрать тендеры</button></form>
     {% include "_notif.html" %}
   </div>
+</div>
+
+<div id="konturProgress" hidden style="margin:0 0 18px;padding:14px 16px;border:1px solid #c7d9d7;border-radius:12px;background:#f4fbfa">
+  <b id="konturProgressTitle">Читаем Excel…</b>
+  <div style="height:8px;border-radius:999px;background:#dce9e7;margin:10px 0;overflow:hidden"><div id="konturProgressBar" style="height:100%;width:0;background:#168574;transition:width .2s"></div></div>
+  <div id="konturProgressText">Найдено: 0 · LLM оценено: 0 · Осталось: 0</div>
 </div>
 
 <div class="stat-grid cols-4">
@@ -104,5 +110,28 @@
       fp.classList.toggle('filters-panel--hidden');
     });
   }
+
+  (function(){
+    var form=document.getElementById('konturImportForm'), file=document.getElementById('konturFile');
+    var box=document.getElementById('konturProgress'), title=document.getElementById('konturProgressTitle');
+    var text=document.getElementById('konturProgressText'), bar=document.getElementById('konturProgressBar');
+    if(!form||!file) return;
+    file.addEventListener('change',async function(){
+      if(!file.files.length) return;
+      box.hidden=false; title.textContent='Загружаем Excel…'; text.textContent='Подготавливаем файл…'; bar.style.width='0%';
+      try {
+        var response=await fetch(form.action,{method:'POST',body:new FormData(form)}), data=await response.json();
+        if(!response.ok) throw new Error(data.error||'Не удалось начать импорт.');
+        var timer=setInterval(async function(){
+          var statusResponse=await fetch('/import/kontur/'+data.job_id+'/status'), job=await statusResponse.json();
+          var found=job.found||0, processed=job.processed||0, remaining=job.remaining||0;
+          bar.style.width=(found ? Math.round(processed/found*100) : 0)+'%';
+          text.textContent='Найдено: '+found+' · LLM оценено: '+(job.llm_scored||0)+' · Осталось: '+remaining;
+          if(job.status==='complete'){ clearInterval(timer); title.textContent='Excel загружен'; bar.style.width='100%'; setTimeout(function(){location.reload()},700); }
+          if(job.status==='error'){ clearInterval(timer); title.textContent='Ошибка импорта'; text.textContent=job.error||'Не удалось обработать файл.'; }
+        },500);
+      } catch(error) { title.textContent='Ошибка импорта'; text.textContent=error.message; }
+    });
+  })();
 </script>
 {% endblock %}

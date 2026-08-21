@@ -10,9 +10,14 @@ enrich, icp_config) — эти файлы менять не нужно.
 from __future__ import annotations
 
 import math
+import os
 import re
+import tempfile
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import wraps
+from threading import Lock
 
 from flask import (Flask, Response, abort, flash, jsonify, redirect, render_template,
                    request, session, url_for)
@@ -37,11 +42,15 @@ RELEVANT_MIN = 60      # «подходит нашей компании»
 TOP_MIN = 70           # «наиболее подходящее»; числа вторичны, важнее теги и объяснение
 NOTIFY_MIN_SCORE = 60  # порог: уведомления только для тендеров с баллом не ниже
 INGEST_MAX_PAGES = 50  # сколько страниц собирать
+USE_LLM_SCORING = str(os.getenv("USE_LLM_SCORING", "0")) == "1"
 ENRICH_MIN_SCORE = 50  # какие тендеры обогащать
 PER_PAGE = 20          # тендеров на страницу списка
 
 _BLOCK_RE = re.compile(r"^(заказчик|организатор)\s*:?\s*", re.I)
 _PLACEHOLDER_RE = re.compile(r"[\u2580-\u259F]+")  # символы «Block Elements»: ░ ▒ ▓ █ …
+_kontur_import_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="kontur-import")
+_kontur_import_jobs: dict[str, dict] = {}
+_kontur_import_lock = Lock()
 
 
 # ============================================================================
@@ -1131,7 +1140,7 @@ def profile():
         icp["stop_words"] = _lines(f.get("stop_words"))
         save_icp(icp)
         try:
-            n = rescore_all(icp)
+            n = rescore_all(icp, use_llm=USE_LLM_SCORING)
             flash(f"Профиль сохранён, баллы пересчитаны: {n} тендеров")
         except Exception as e:  # noqa: BLE001
             flash(f"Профиль сохранён, но пересчёт не удался: {e}", "err")
@@ -1444,7 +1453,7 @@ def toggle_not_pursued(tender_id):
 def ingest():
     """Одна кнопка: собрать из всех источников (с фильтром 10 млрд ₽) и обогатить."""
     try:
-        run_ingest(max_pages=INGEST_MAX_PAGES, use_llm=False, write_json=True)
+        run_ingest(max_pages=INGEST_MAX_PAGES, use_llm=USE_LLM_SCORING, write_json=True)
     except Exception as e:  # noqa: BLE001
         flash(f"Ошибка сбора: {e}", "err")
     return redirect(request.referrer or url_for("home"))
@@ -1455,40 +1464,69 @@ def import_kontur():
     """Загрузка Excel-выгрузки Контур.Закупок через общий конвейер скоринга."""
     upload = request.files.get("kontur_file")
     if not upload or not upload.filename:
-        flash("Выберите Excel-файл Контур.Закупок", "err")
-        return redirect(request.referrer or url_for("home"))
+        return jsonify({"error": "Выберите Excel-файл Контур.Закупок."}), 400
     if not upload.filename.lower().endswith(".xlsx"):
-        flash("Поддерживаются только выгрузки Контур.Закупок в формате .xlsx", "err")
-        return redirect(request.referrer or url_for("home"))
+        return jsonify({"error": "Поддерживаются только выгрузки Контур.Закупок в формате .xlsx."}), 400
 
-    try:
-        summary = import_kontur_xlsx(upload.stream)
-        current_settings = _load_settings()
-        smtp = notification_service.smtp_config()
-        notification_conn = storage.connect()
+    with _kontur_import_lock:
+        if any(job["status"] in {"queued", "running"} for job in _kontur_import_jobs.values()):
+            return jsonify({"error": "Загрузка Excel уже выполняется."}), 409
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+        temp_path = temp.name
+        temp.close()
+        upload.save(temp_path)
+        job_id = uuid.uuid4().hex
+        _kontur_import_jobs[job_id] = {
+            "status": "queued", "found": 0, "processed": 0,
+            "llm_scored": 0, "remaining": 0,
+        }
+
+    def update_progress(progress: dict[str, int]) -> None:
+        with _kontur_import_lock:
+            _kontur_import_jobs[job_id].update(progress)
+
+    def run_job() -> None:
+        with _kontur_import_lock:
+            _kontur_import_jobs[job_id]["status"] = "running"
         try:
-            notification_summary = notification_service.create_new_tender_notifications(
-                notification_conn,
-                summary.get("new_ids", []),
-                site_enabled=current_settings["n_new_site"] == "1",
-                email_enabled=current_settings["n_new_email"] == "1",
-                recipient=current_settings.get("email") or smtp["recipient"],
-                base_url=smtp["base_url"],
-                relevant_min=RELEVANT_MIN,
-                top_min=TOP_MIN,
-            )
+            with open(temp_path, "rb") as source:
+                summary = import_kontur_xlsx(
+                    source, use_llm=USE_LLM_SCORING, progress_callback=update_progress,
+                )
+            current_settings = _load_settings()
+            smtp = notification_service.smtp_config()
+            notification_conn = storage.connect()
+            try:
+                notification_service.create_new_tender_notifications(
+                    notification_conn, summary.get("new_ids", []),
+                    site_enabled=current_settings["n_new_site"] == "1",
+                    email_enabled=current_settings["n_new_email"] == "1",
+                    recipient=current_settings.get("email") or smtp["recipient"],
+                    base_url=smtp["base_url"], relevant_min=RELEVANT_MIN, top_min=TOP_MIN,
+                )
+            finally:
+                notification_conn.close()
+            if current_settings["n_new_email"] == "1":
+                notification_service.dispatch_email_outbox()
+            with _kontur_import_lock:
+                _kontur_import_jobs[job_id].update(status="complete", summary=summary)
+        except Exception as exc:  # noqa: BLE001
+            with _kontur_import_lock:
+                _kontur_import_jobs[job_id].update(status="error", error=str(exc))
         finally:
-            notification_conn.close()
-        delivery = ({"sent": 0, "failed": 0}
-                    if current_settings["n_new_email"] != "1"
-                    else notification_service.dispatch_email_outbox())
-        if delivery.get("failed") and not delivery.get("config_error"):
-            flash("Тендеры загружены, но письмо осталось в очереди из-за ошибки отправки", "err")
-    except KonturExcelError as exc:
-        flash(str(exc), "err")
-    except Exception as exc:  # noqa: BLE001
-        flash(f"Ошибка импорта Контур.Закупок: {exc}", "err")
-    return redirect(request.referrer or url_for("home"))
+            os.unlink(temp_path)
+
+    _kontur_import_executor.submit(run_job)
+    return jsonify({"job_id": job_id}), 202
+
+
+@app.route("/import/kontur/<job_id>/status")
+def import_kontur_status(job_id):
+    with _kontur_import_lock:
+        job = _kontur_import_jobs.get(job_id)
+        if job is None:
+            return jsonify({"error": "Задача импорта не найдена."}), 404
+        return jsonify(job)
 
 
 @app.route("/rescore", methods=["POST"])
