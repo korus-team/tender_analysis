@@ -29,7 +29,6 @@ tenders.db
 
 # Локальные документы, загруженные для ИИ-анализа
 uploads/
-
 # Автоматически пополняемый локальный реестр проверенных крупных компаний.
 data/verified_large_companies.csv
 data/verified_large_companies.csv.tmp
