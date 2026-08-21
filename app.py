@@ -9,13 +9,19 @@ enrich, icp_config) — эти файлы менять не нужно.
 """
 from __future__ import annotations
 
+import json
 import math
+import os
 import re
+import tempfile
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import wraps
+from threading import Lock
 
 from flask import (Flask, Response, abort, flash, jsonify, redirect, render_template,
-                   request, session, url_for)
+                   request, send_from_directory, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import storage
@@ -27,6 +33,8 @@ from scoring import theme_score
 from icp_config import load_icp, save_icp
 from kontur_excel import KonturExcelError, import_kontur_xlsx
 import notification_service
+from document_analysis import (DocumentAnalysisError, analyze as analyze_documents,
+                               document_upload_dir, persist_uploads, read_uploads)
 
 app = Flask(__name__)
 app.secret_key = "dar-tender-assistant-local"
@@ -37,11 +45,15 @@ RELEVANT_MIN = 60      # «подходит нашей компании»
 TOP_MIN = 70           # «наиболее подходящее»; числа вторичны, важнее теги и объяснение
 NOTIFY_MIN_SCORE = 60  # порог: уведомления только для тендеров с баллом не ниже
 INGEST_MAX_PAGES = 50  # сколько страниц собирать
+USE_LLM_SCORING = str(os.getenv("USE_LLM_SCORING", "0")) == "1"
 ENRICH_MIN_SCORE = 50  # какие тендеры обогащать
 PER_PAGE = 20          # тендеров на страницу списка
 
 _BLOCK_RE = re.compile(r"^(заказчик|организатор)\s*:?\s*", re.I)
 _PLACEHOLDER_RE = re.compile(r"[\u2580-\u259F]+")  # символы «Block Elements»: ░ ▒ ▓ █ …
+_kontur_import_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="kontur-import")
+_kontur_import_jobs: dict[str, dict] = {}
+_kontur_import_lock = Lock()
 
 
 # ============================================================================
@@ -272,7 +284,13 @@ def _annotate(tenders):
                               and t["direction"] != "license")
         # коммерческая / государственная (по наличию номера в ЕИС)
         det = t.get("details") if isinstance(t.get("details"), dict) else {}
-        if det and (det.get("eis_number") or det.get("eis_url")):
+        trade_type = str(det.get("trade_type") or "").lower().replace(" ", "")
+        is_government = bool(
+            det.get("eis_number") or det.get("eis_url") or
+            any(marker in trade_type for marker in
+                ("44-фз", "223-фз", "615ппрф", "615-пп"))
+        )
+        if is_government:
             t["ptype"], t["ptype_label"] = "gov", "Госзакупка (ФЗ)"
         elif t.get("enriched_at"):
             t["ptype"], t["ptype_label"] = "com", "Коммерческая"
@@ -283,7 +301,18 @@ def _annotate(tenders):
         # цена / заказчик / риски
         t["price_fmt"] = fmt_price(t.get("price_rub"))
         t["customer"] = _clean_customer(t.get("customer"))
-        t["revenue_h"] = company_size.revenue_human(t.get("customer"))
+        exact_revenue = (det.get("customer_turnover_rub") or
+                         det.get("customer_revenue_rub"))
+        turnover_status = det.get("customer_turnover_status")
+        t["turnover_unverified"] = turnover_status in {
+            "no_data", "not_found", "invalid_inn"
+        }
+        if exact_revenue is not None:
+            t["revenue_h"] = company_size.revenue_human_value(exact_revenue)
+        elif t["turnover_unverified"]:
+            t["revenue_h"] = "Не подтверждён"
+        else:
+            t["revenue_h"] = company_size.revenue_human(t.get("customer"))
         t["risks"] = _risks_from_labels(t.get("labels"), days)
         out.append(t)
     return out
@@ -454,7 +483,8 @@ def _load_stages(conn):
 
 STAGE_LABELS = {"passed_dar": "Передано ДАР",
                 "rejected_dar": "Отклонено ДАР",
-                "passed_other": "Передано др. деп."}
+                "passed_other": "Передано др. деп.",
+                "not_pursued": "Не пошли"}
 
 
 def _load_meta(conn):
@@ -548,6 +578,51 @@ def _ensure_settings_table():
     conn.close()
 
 
+def _ensure_document_analysis_table():
+    """Результаты ИИ-анализа: без хранения самих загруженных файлов."""
+    conn = storage.connect()
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS tender_document_analyses ("
+        "tender_id TEXT PRIMARY KEY, documents TEXT NOT NULL, risks TEXT NOT NULL, "
+        "pitfalls TEXT NOT NULL, recommendations TEXT NOT NULL, openness TEXT, "
+        "summary TEXT, analyzer TEXT NOT NULL, analyzed_at TEXT NOT NULL)")
+    conn.commit()
+    conn.close()
+
+
+def _document_analysis(conn, tender_id):
+    row = conn.execute(
+        "SELECT * FROM tender_document_analyses WHERE tender_id = ?", (tender_id,)
+    ).fetchone()
+    if not row:
+        return None
+    result = dict(row)
+    for key in ("documents", "risks", "pitfalls", "recommendations"):
+        try:
+            result[key] = json.loads(result[key] or "[]")
+        except (TypeError, ValueError):
+            result[key] = []
+    return result
+
+
+def _save_document_analysis(conn, tender_id, documents, result):
+    conn.execute(
+        "INSERT INTO tender_document_analyses "
+        "(tender_id, documents, risks, pitfalls, recommendations, openness, summary, analyzer, analyzed_at) "
+        "VALUES (?,?,?,?,?,?,?,?,?) "
+        "ON CONFLICT(tender_id) DO UPDATE SET documents=excluded.documents, risks=excluded.risks, "
+        "pitfalls=excluded.pitfalls, recommendations=excluded.recommendations, openness=excluded.openness, "
+        "summary=excluded.summary, analyzer=excluded.analyzer, analyzed_at=excluded.analyzed_at",
+        (tender_id, json.dumps(documents, ensure_ascii=False),
+         json.dumps(result["risks"], ensure_ascii=False),
+         json.dumps(result["pitfalls"], ensure_ascii=False),
+         json.dumps(result["recommendations"], ensure_ascii=False),
+         result["openness"], result["summary"], result["analyzer"],
+         datetime.now().isoformat(timespec="seconds")),
+    )
+    conn.commit()
+
+
 def _law_tag(t):
     """Тег закона по тексту закупки (лёгкая эвристика, где закон упомянут)."""
     txt = ((t.get("title") or "") + " " + (t.get("subject") or "")).lower()
@@ -599,6 +674,7 @@ _ensure_auth_tables()
 _ensure_meta_table()
 _ensure_priorities_table()
 _ensure_settings_table()
+_ensure_document_analysis_table()
 _notification_conn = storage.connect()
 notification_service.ensure_schema(_notification_conn)
 notification_service.prune_ineligible_site_notifications(
@@ -1006,8 +1082,10 @@ def tender(tender_id):
         return redirect(url_for("tenders"))
     row = conn.execute("SELECT relevance, not_pursued FROM tender_meta WHERE tender_id = ?",
                        (tender_id,)).fetchone()
+    doc_analysis = _document_analysis(conn, tender_id)
     conn.close()
     t = _annotate([t])[0]
+    t["document_analysis"] = doc_analysis
     override = row["relevance"] if row else None
     not_pursued = bool(row["not_pursued"]) if row else False
     auto_rel = directions.is_relevant(t)
@@ -1029,6 +1107,48 @@ def tender(tender_id):
     return render_template("tender.html", active="tenders", t=t, back_url=back_url,
                            back_label=back_label, override=override, eff_rel=eff_rel,
                            not_pursued=not_pursued)
+
+
+@app.route("/tender/<tender_id>/analyze-documents", methods=["POST"])
+def tender_analyze_documents(tender_id):
+    """Принимает набор текстовых документов, анализирует и сохраняет только результат."""
+    conn = storage.connect()
+    exists = conn.execute("SELECT 1 FROM tenders WHERE tender_id = ?", (tender_id,)).fetchone()
+    if not exists:
+        conn.close()
+        abort(404)
+    try:
+        documents, text = read_uploads(request.files.getlist("documents"))
+        result = analyze_documents(
+            text, request.form.get("include_recommendations") == "1",
+            [document["name"] for document in documents],
+        )
+        documents = persist_uploads(documents, tender_id)
+        _save_document_analysis(conn, tender_id, documents, result)
+    except DocumentAnalysisError as exc:
+        flash(str(exc), "err")
+    finally:
+        conn.close()
+    if 'result' in locals():
+        source = "OpenAI" if result["analyzer"] == "openai" else "локальный экспресс-анализ"
+        flash(f"Документы проанализированы: {source}.")
+    return redirect(url_for("tender", tender_id=tender_id))
+
+
+@app.route("/tender/<tender_id>/analysis-document/<stored_name>")
+def tender_analysis_document(tender_id, stored_name):
+    """Открывает только файл, принадлежащий сохранённому анализу тендера."""
+    conn = storage.connect()
+    record = _document_analysis(conn, tender_id)
+    conn.close()
+    documents = record.get("documents", []) if record else []
+    document = next((item for item in documents if item.get("stored_name") == stored_name), None)
+    if not document:
+        abort(404)
+    return send_from_directory(
+        document_upload_dir(tender_id), stored_name,
+        as_attachment=False, download_name=document.get("name") or stored_name,
+    )
 
 
 @app.route("/favorites")
@@ -1131,7 +1251,7 @@ def profile():
         icp["stop_words"] = _lines(f.get("stop_words"))
         save_icp(icp)
         try:
-            n = rescore_all(icp)
+            n = rescore_all(icp, use_llm=USE_LLM_SCORING)
             flash(f"Профиль сохранён, баллы пересчитаны: {n} тендеров")
         except Exception as e:  # noqa: BLE001
             flash(f"Профиль сохранён, но пересчёт не удался: {e}", "err")
@@ -1170,10 +1290,14 @@ SETTINGS_DEFAULTS = {
     "n_new_email": "1", "n_new_site": "1",
     "n_fav_email": "0", "n_fav_site": "1",
     "n_remind_email": "1", "n_remind_site": "0",
+    "n_license_email": "1", "n_license_site": "1",
+    "n_priority_email": "1", "n_priority_site": "1",
+    "n_weekly_email": "1", "n_weekly_site": "0",
     "timezone": "Московское время UTC +3",
     "check_freq": "1", "check_win1": "В 9 – 10", "check_win2": "В 12 – 13", "check_win3": "В 16 – 17",
     "notify_freq": "1", "notify_win": "В 8 – 9",
     "email": "",
+    "extra_contacts": "",
 }
 
 
@@ -1192,10 +1316,13 @@ def _load_settings():
 def settings():
     if request.method == "POST":
         toggles = ["n_new_email", "n_new_site", "n_fav_email", "n_fav_site",
-                   "n_remind_email", "n_remind_site"]
+                   "n_remind_email", "n_remind_site",
+                   "n_license_email", "n_license_site",
+                   "n_priority_email", "n_priority_site",
+                   "n_weekly_email", "n_weekly_site"]
         vals = {k: ("1" if request.form.get(k) else "0") for k in toggles}
         for k in ("timezone", "check_freq", "check_win1", "check_win2", "check_win3",
-                  "notify_freq", "notify_win", "email"):
+                  "notify_freq", "notify_win", "email", "extra_contacts"):
             vals[k] = request.form.get(k, SETTINGS_DEFAULTS[k])
         conn = storage.connect()
         for k, v in vals.items():
@@ -1208,6 +1335,21 @@ def settings():
                            smtp_ready=notification_service.smtp_ready(),
                            smtp_env_path=str(notification_service.ENV_PATH),
                            windows=["В 8 – 9", "В 9 – 10", "В 12 – 13", "В 16 – 17", "В 18 – 19"])
+
+
+@app.route("/settings/contacts", methods=["POST"])
+def settings_contacts():
+    value = (request.form.get("extra_contacts") or "").strip()
+    conn = storage.connect()
+    conn.execute(
+        "INSERT OR REPLACE INTO app_settings (key, value) VALUES (?, ?)",
+        ("extra_contacts", value),
+    )
+    conn.commit()
+    conn.close()
+    if request.headers.get("X-Requested-With") == "fetch":
+        return jsonify(ok=True)
+    return redirect(url_for("settings") + "#profile")
 
 
 @app.route("/settings/account", methods=["POST"])
@@ -1444,7 +1586,7 @@ def toggle_not_pursued(tender_id):
 def ingest():
     """Одна кнопка: собрать из всех источников (с фильтром 10 млрд ₽) и обогатить."""
     try:
-        run_ingest(max_pages=INGEST_MAX_PAGES, use_llm=False, write_json=True)
+        run_ingest(max_pages=INGEST_MAX_PAGES, use_llm=USE_LLM_SCORING, write_json=True)
     except Exception as e:  # noqa: BLE001
         flash(f"Ошибка сбора: {e}", "err")
     return redirect(request.referrer or url_for("home"))
@@ -1455,40 +1597,69 @@ def import_kontur():
     """Загрузка Excel-выгрузки Контур.Закупок через общий конвейер скоринга."""
     upload = request.files.get("kontur_file")
     if not upload or not upload.filename:
-        flash("Выберите Excel-файл Контур.Закупок", "err")
-        return redirect(request.referrer or url_for("home"))
+        return jsonify({"error": "Выберите Excel-файл Контур.Закупок."}), 400
     if not upload.filename.lower().endswith(".xlsx"):
-        flash("Поддерживаются только выгрузки Контур.Закупок в формате .xlsx", "err")
-        return redirect(request.referrer or url_for("home"))
+        return jsonify({"error": "Поддерживаются только выгрузки Контур.Закупок в формате .xlsx."}), 400
 
-    try:
-        summary = import_kontur_xlsx(upload.stream)
-        current_settings = _load_settings()
-        smtp = notification_service.smtp_config()
-        notification_conn = storage.connect()
+    with _kontur_import_lock:
+        if any(job["status"] in {"queued", "running"} for job in _kontur_import_jobs.values()):
+            return jsonify({"error": "Загрузка Excel уже выполняется."}), 409
+        temp = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+        temp_path = temp.name
+        temp.close()
+        upload.save(temp_path)
+        job_id = uuid.uuid4().hex
+        _kontur_import_jobs[job_id] = {
+            "status": "queued", "found": 0, "processed": 0,
+            "llm_scored": 0, "remaining": 0,
+        }
+
+    def update_progress(progress: dict[str, int]) -> None:
+        with _kontur_import_lock:
+            _kontur_import_jobs[job_id].update(progress)
+
+    def run_job() -> None:
+        with _kontur_import_lock:
+            _kontur_import_jobs[job_id]["status"] = "running"
         try:
-            notification_summary = notification_service.create_new_tender_notifications(
-                notification_conn,
-                summary.get("new_ids", []),
-                site_enabled=current_settings["n_new_site"] == "1",
-                email_enabled=current_settings["n_new_email"] == "1",
-                recipient=current_settings.get("email") or smtp["recipient"],
-                base_url=smtp["base_url"],
-                relevant_min=RELEVANT_MIN,
-                top_min=TOP_MIN,
-            )
+            with open(temp_path, "rb") as source:
+                summary = import_kontur_xlsx(
+                    source, use_llm=USE_LLM_SCORING, progress_callback=update_progress,
+                )
+            current_settings = _load_settings()
+            smtp = notification_service.smtp_config()
+            notification_conn = storage.connect()
+            try:
+                notification_service.create_new_tender_notifications(
+                    notification_conn, summary.get("new_ids", []),
+                    site_enabled=current_settings["n_new_site"] == "1",
+                    email_enabled=current_settings["n_new_email"] == "1",
+                    recipient=current_settings.get("email") or smtp["recipient"],
+                    base_url=smtp["base_url"], relevant_min=RELEVANT_MIN, top_min=TOP_MIN,
+                )
+            finally:
+                notification_conn.close()
+            if current_settings["n_new_email"] == "1":
+                notification_service.dispatch_email_outbox()
+            with _kontur_import_lock:
+                _kontur_import_jobs[job_id].update(status="complete", summary=summary)
+        except Exception as exc:  # noqa: BLE001
+            with _kontur_import_lock:
+                _kontur_import_jobs[job_id].update(status="error", error=str(exc))
         finally:
-            notification_conn.close()
-        delivery = ({"sent": 0, "failed": 0}
-                    if current_settings["n_new_email"] != "1"
-                    else notification_service.dispatch_email_outbox())
-        if delivery.get("failed") and not delivery.get("config_error"):
-            flash("Тендеры загружены, но письмо осталось в очереди из-за ошибки отправки", "err")
-    except KonturExcelError as exc:
-        flash(str(exc), "err")
-    except Exception as exc:  # noqa: BLE001
-        flash(f"Ошибка импорта Контур.Закупок: {exc}", "err")
-    return redirect(request.referrer or url_for("home"))
+            os.unlink(temp_path)
+
+    _kontur_import_executor.submit(run_job)
+    return jsonify({"job_id": job_id}), 202
+
+
+@app.route("/import/kontur/<job_id>/status")
+def import_kontur_status(job_id):
+    with _kontur_import_lock:
+        job = _kontur_import_jobs.get(job_id)
+        if job is None:
+            return jsonify({"error": "Задача импорта не найдена."}), 404
+        return jsonify(job)
 
 
 @app.route("/rescore", methods=["POST"])

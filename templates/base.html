@@ -624,6 +624,19 @@ svg{display:block}
 .btn-sm.teal{background:var(--accent-btn);border-color:var(--accent-btn);color:#000000}
 .btn-sm.teal:hover{filter:brightness(1.05)}
 .btn-sm[disabled]{opacity:.55;cursor:default}
+.analysis-open-btn{margin-top:14px}
+.analysis-meta{margin-top:13px;padding-top:12px;border-top:1px solid var(--border);font-size:13.5px!important}
+.tender-modal{display:none;position:fixed;z-index:1000;inset:0;align-items:center;justify-content:center;padding:20px}
+.tender-modal.is-open{display:flex}
+.tender-modal__backdrop{position:absolute;inset:0;background:rgba(26,22,42,.38)}
+.tender-modal__panel{position:relative;width:min(100%,620px);max-height:calc(100vh - 40px);overflow:auto;background:#fff;border:2px solid var(--c-purple);border-radius:18px;padding:25px;box-shadow:0 18px 55px rgba(38,24,71,.2)}
+.tender-modal__panel h2{font-size:20px;margin:0 34px 9px 0}.tender-modal__panel>p{color:var(--text-2);font-size:14px;line-height:1.5;margin-bottom:18px}
+.tender-modal__close{position:absolute;right:15px;top:12px;border:0;background:transparent;color:var(--text-2);font-size:30px;line-height:1;cursor:pointer}
+.file-drop{display:flex;flex-direction:column;gap:6px;min-height:128px;align-items:center;justify-content:center;text-align:center;border:1.5px dashed var(--c-purple);border-radius:14px;background:var(--surface-2);cursor:pointer;padding:18px;font-size:15px;font-weight:600}
+.file-drop input{position:absolute;width:1px;height:1px;opacity:0}.file-drop small{font-size:12.5px;font-weight:400;color:var(--text-2);max-width:100%;overflow-wrap:anywhere}
+.analysis-check{display:flex;align-items:flex-start;gap:9px;margin:16px 0;color:var(--text);font-size:14px;line-height:1.4;cursor:pointer}.analysis-check input{margin-top:3px;accent-color:var(--teal)}
+.tender-modal__actions{display:flex;gap:10px;flex-wrap:wrap}.recommendations-list{padding-left:20px;display:flex;flex-direction:column;gap:13px;font-size:14.5px;line-height:1.45;margin:16px 0 22px}.recommendations-list li::marker{color:var(--teal);font-weight:700}.recommendation-source{display:block;width:max-content;max-width:100%;margin-top:5px;color:var(--teal);font-size:12.5px;text-decoration:none;overflow-wrap:anywhere}.recommendation-source:hover{text-decoration:underline}.recommendation-source.muted{color:var(--text-3)}
+.analysis-loading{position:fixed;z-index:1200;inset:0;display:grid;place-items:center;padding:20px;background:rgba(26,22,42,.48);backdrop-filter:blur(3px)}.analysis-loading[hidden]{display:none}.analysis-loading__card{width:min(100%,420px);padding:32px 28px;text-align:center;background:#fff;border:2px solid var(--c-purple);border-radius:18px;box-shadow:0 18px 55px rgba(38,24,71,.25)}.analysis-loading__card h2{margin:17px 0 9px;font-size:20px}.analysis-loading__card p{margin:0;color:var(--text-2);font-size:14px;line-height:1.5}.analysis-loading__spinner{display:block;width:42px;height:42px;margin:auto;border:4px solid var(--accent-soft);border-top-color:var(--teal);border-radius:50%;animation:analysis-spin .8s linear infinite}@keyframes analysis-spin{to{transform:rotate(360deg)}}.analysis-in-progress{overflow:hidden}
 .mail-form{margin-top:16px;display:flex;gap:12px;align-items:flex-start}
 .mail-send{flex-shrink:0;width:74px;height:74px;border-radius:12px;border:1px solid var(--border-2);background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:var(--text-2);font-size:12px}
 .mail-send .icon{width:22px;height:22px}
@@ -1140,6 +1153,7 @@ svg{display:block}
 }
 
 /* Иконки в «Почему подходит?» и «Риски» */
+.ilist.ok li.unverified .icon{color:#D98A2B}
 .ilist.ok .icon,
 .ilist.risk .icon{
   color:#000000;
@@ -1404,6 +1418,15 @@ svg{display:block}
   gap:22px;
   align-items:stretch;
 }
+.tender-content-grid > *,
+.tender-left-stack,
+.tender-side-stack,
+.tender-docs-row,
+.ibox{min-width:0}
+.ibox .ilist li > div,
+.ibox .analysis-meta,
+.ibox .recommendation-source{min-width:0;max-width:100%;overflow-wrap:anywhere;word-break:break-word}
+.ibox .recommendation-source{width:auto}
 .tender-docs-row > .ibox{
   margin-bottom:0;
   height:100%;
@@ -1855,7 +1878,7 @@ a[aria-current="page"]{
   display:grid !important;
   grid-template-columns:190px minmax(0,1fr) !important;
   column-gap:52px !important;
-  align-items:start !important;
+  align-items:stretch !important;
 }
 .profile-main > div:first-child{
   display:flex !important;
@@ -1889,7 +1912,7 @@ a[aria-current="page"]{
 
 /* Логин — у верхнего края блока с фото */
 .profile-main{
-  align-items:start !important;
+  align-items:stretch !important;
 }
 .profile-main > div:last-child{
   align-self:start !important;
@@ -1921,6 +1944,322 @@ a[aria-current="page"]{
   background:#EEEEF2 !important;
   color:#000000 !important;
   border:1px solid #D9D9D9 !important;
+}
+</style>
+
+
+<style>
+/* =================== UI ALIGNMENT UPDATE 20.08 =================== */
+
+/* Настройки: одинаковые внутренние отступы и положение заголовков */
+.settings-grid{
+  align-items:stretch !important;
+}
+.settings-right{
+  align-self:start !important;
+}
+.settings-card{
+  padding:24px 26px !important;
+}
+.settings-card h3{
+  margin:0 0 6px 0 !important;
+  line-height:1.25 !important;
+}
+.settings-card .card-sub{
+  margin-top:0 !important;
+}
+
+/* Select в настройках — стандартного размера, стрелка не у края */
+.settings-field select{
+  appearance:none;
+  -webkit-appearance:none;
+  height:44px !important;
+  min-height:44px !important;
+  padding:10px 42px 10px 14px !important;
+  border:1px solid #D9D9D9;
+  border-radius:10px;
+  background-color:#FFFFFF;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9.5 12 15.5 18 9.5'/></svg>");
+  background-repeat:no-repeat;
+  background-position:right 14px center;
+  background-size:16px 16px;
+}
+.settings-two{
+  align-items:stretch !important;
+}
+.settings-two > select:first-child,
+.win-stack select{
+  height:44px !important;
+  min-height:44px !important;
+}
+.win-stack{
+  gap:10px !important;
+}
+
+/* Настройки: настоящая кнопка добавления контакта */
+.settings-add-btn{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  gap:7px;
+  margin-top:12px;
+  padding:9px 13px;
+  border:1px solid #D9D9D9;
+  border-radius:10px;
+  background:#FFFFFF;
+  color:#000000;
+  font-family:inherit;
+  font-size:13px;
+  font-weight:600;
+  cursor:pointer;
+}
+.settings-add-btn:hover{background:#F7F7F8}
+.settings-add-btn .plus{font-size:18px;line-height:1}
+
+.extra-contacts{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  margin-top:10px;
+}
+.extra-contact-row{
+  display:flex;
+  gap:8px;
+  align-items:center;
+}
+.extra-contact-row input{flex:1}
+.extra-contact-remove{
+  width:36px;
+  height:36px;
+  display:grid;
+  place-items:center;
+  border:1px solid #D9D9D9;
+  border-radius:9px;
+  background:#FFFFFF;
+  color:#000000;
+  font-size:18px;
+}
+
+/* Этап в избранном: стрелка с нормальным отступом */
+.stage-select{
+  appearance:none;
+  -webkit-appearance:none;
+  padding:9px 42px 9px 12px !important;
+  background-color:#FFFFFF;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23000000' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9.5 12 15.5 18 9.5'/></svg>");
+  background-repeat:no-repeat;
+  background-position:right 14px center;
+  background-size:16px 16px;
+}
+
+/* Новый этап избранного */
+.ttag-not_pursued{
+  background:#66A2D2 !important;
+  color:#FFFFFF !important;
+}
+
+/* Карточки тендеров: цена и срок строго по одинаковым колонкам */
+.tcard{
+  display:flex;
+  align-items:center;
+}
+.tcard-main{
+  flex:1 1 auto;
+  min-width:0;
+}
+.tcard-right{
+  flex:0 0 370px !important;
+  min-width:370px !important;
+  display:grid !important;
+  grid-template-columns:125px 220px !important;
+  column-gap:25px !important;
+  align-items:center !important;
+  justify-content:end !important;
+  text-align:left !important;
+}
+.tcard-price{
+  width:125px !important;
+  min-width:125px !important;
+  text-align:left !important;
+  white-space:nowrap !important;
+}
+.tcard-deadline{
+  width:220px !important;
+  min-width:220px !important;
+  margin:0 !important;
+  display:flex !important;
+  flex-direction:column !important;
+  align-items:stretch !important;
+  justify-content:center !important;
+  gap:7px !important;
+  text-align:left !important;
+}
+.tcard-deadline > span{
+  display:block;
+  width:100%;
+  text-align:left;
+}
+.tcard-deadline > b{
+  align-self:center !important;
+  width:max-content !important;
+  margin:0 auto !important;
+  text-align:center !important;
+}
+.tcard > form:last-child{
+  flex:0 0 48px;
+  margin-left:12px;
+}
+
+/* Пагинация — текущая страница без цветной заливки */
+.win-chip.on{
+  background:transparent !important;
+  color:#000000 !important;
+  border-color:transparent !important;
+  box-shadow:none !important;
+}
+
+/* Нерелевантное: спокойная серая плашка */
+.irrelevant-note{
+  background:#EEEEF2 !important;
+  color:#000000 !important;
+  border:1px solid #D9D9D9 !important;
+}
+
+/* Адаптив */
+@media(max-width:1100px){
+  .tcard-right{
+    flex-basis:320px !important;
+    min-width:320px !important;
+    grid-template-columns:100px 195px !important;
+  }
+  .tcard-price{
+    width:100px !important;
+    min-width:100px !important;
+  }
+  .tcard-deadline{
+    width:195px !important;
+    min-width:195px !important;
+  }
+}
+@media(max-width:720px){
+  .tcard{
+    flex-wrap:wrap;
+  }
+  .tcard-right{
+    flex:1 1 100% !important;
+    width:100% !important;
+    min-width:0 !important;
+    grid-template-columns:100px minmax(0,1fr) !important;
+  }
+  .tcard-deadline{
+    width:auto !important;
+    min-width:0 !important;
+  }
+}
+</style>
+
+
+<style>
+/* =================== SMALL ALIGNMENT FIX 20.08 =================== */
+
+/* Плашка "Осталось ..." — строго по левому краю блока "Подача заявок" */
+.tcard-deadline > b{
+  align-self:flex-start !important;
+  margin:0 !important;
+  text-align:left !important;
+}
+
+/* Настройки: левая карточка уведомлений и правая колонка одинаковой ширины */
+.settings-grid{
+  grid-template-columns:minmax(0,1.65fr) minmax(360px,1fr) !important;
+  gap:24px !important;
+  align-items:stretch !important;
+}
+.settings-right{
+  width:100% !important;
+}
+.settings-grid > .settings-card{
+  height:100% !important;
+}
+.settings-card{
+  width:100% !important;
+  box-sizing:border-box !important;
+}
+
+@media(max-width:1050px){
+  .settings-grid{
+    grid-template-columns:1fr !important;
+  }
+}
+</style>
+
+
+<style>
+/* =================== SETTINGS HEIGHT BALANCE 20.08 =================== */
+
+/* Возвращаем широкую левую колонку и растягиваем ее по высоте правой колонки */
+.settings-grid{
+  grid-template-columns:minmax(0,1.35fr) minmax(360px,.8fr) !important;
+  gap:24px !important;
+  align-items:stretch !important;
+}
+
+.settings-grid > .settings-card.pink{
+  height:100% !important;
+  display:flex !important;
+  flex-direction:column !important;
+}
+
+.settings-right{
+  height:100% !important;
+  display:flex !important;
+  flex-direction:column !important;
+  gap:20px !important;
+}
+
+/* Таблица уведомлений занимает все оставшееся место внутри карточки */
+.settings-grid > .settings-card.pink .notify-table{
+  flex:1 1 auto !important;
+  display:flex !important;
+  flex-direction:column !important;
+}
+
+/* Заголовок таблицы остается компактным */
+.settings-grid > .settings-card.pink .notify-head{
+  flex:0 0 auto !important;
+}
+
+/* Шесть строк распределяются равномерно по доступной высоте */
+.settings-grid > .settings-card.pink .notify-row{
+  flex:1 1 0 !important;
+  min-height:0 !important;
+  display:grid !important;
+  align-content:center !important;
+  padding-top:10px !important;
+  padding-bottom:10px !important;
+}
+
+/* Немного уменьшаем лишний отступ под описанием */
+.settings-grid > .settings-card.pink .card-sub{
+  margin-bottom:14px !important;
+}
+
+/* На узких экранах снова обычная высота */
+@media(max-width:1050px){
+  .settings-grid{
+    grid-template-columns:1fr !important;
+    align-items:start !important;
+  }
+  .settings-grid > .settings-card.pink{
+    height:auto !important;
+  }
+  .settings-grid > .settings-card.pink .notify-table{
+    display:block !important;
+  }
+  .settings-grid > .settings-card.pink .notify-row{
+    min-height:64px !important;
+    display:grid !important;
+  }
 }
 </style>
 

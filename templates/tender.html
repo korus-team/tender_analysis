@@ -1,5 +1,11 @@
 {% extends "base.html" %}
 {% block content %}
+{% macro source_link(item) %}
+  {% if item is mapping and item.document %}
+    {% set source = (t.document_analysis.documents | selectattr('name', 'equalto', item.document) | list | first) %}
+    {% if source and source.stored_name %}<a class="recommendation-source" href="{{ url_for('tender_analysis_document', tender_id=t.tender_id, stored_name=source.stored_name) }}" target="_blank" rel="noopener">Открыть источник: {{ item.document }}</a>{% endif %}
+  {% endif %}
+{% endmacro %}
 <a class="back-link" href="{{ back_url }}"><svg class="icon"><use href="#i-arrow-left"/></svg>{{ back_label }}</a>
 
 <div class="t-actions-top">
@@ -48,23 +54,28 @@
     <div class="ibox b-desc">
     <h3>Описание проекта</h3>
     <p>{{ t.subject or 'Описание не указано на площадке. Полный текст обычно лежит в файле «Описание объекта закупки» — см. документы ниже.' }}</p>
-    {% if t.details and t.details.eis_url %}<p style="margin-top:10px"><a href="{{ t.details.eis_url }}" target="_blank" rel="noopener" class="pill-eis">{% if t.details.eis_number %}ЕИС {{ t.details.eis_number }}{% else %}Открыть в ЕИС{% endif %}</a></p>{% endif %}
   </div>
 
     <div class="ibox b-why">
       <h3>Почему подходит?</h3>
       {% if t.reasons %}
-      <ul class="ilist ok">{% for r in t.reasons %}<li><svg class="icon"><use href="#i-check"/></svg>{{ r }}</li>{% endfor %}</ul>
+      <ul class="ilist ok">{% for r in t.reasons %}<li{% if loop.first and t.turnover_unverified %} class="unverified"{% endif %}><svg class="icon"><use href="{% if loop.first and t.turnover_unverified %}#i-warn{% else %}#i-check{% endif %}"/></svg>{{ r }}</li>{% endfor %}</ul>
       {% else %}<p>Факторы оценки не сохранены.</p>{% endif %}
+      {% if t.document_analysis and t.document_analysis.recommendations %}
+      <button class="btn-sm teal analysis-open-btn" type="button" onclick="openTenderModal('recommendationsModal')">Посмотреть рекомендации</button>
+      {% endif %}
     </div>
   </div>
 
   <div class="tender-side-stack">
     <div class="ibox b-risk">
       <h3>Риски</h3>
-      {% if t.risks %}
+      {% if t.document_analysis and t.document_analysis.risks %}
+      <ul class="ilist risk">{% for r in t.document_analysis.risks %}<li><svg class="icon"><use href="#i-warn"/></svg><div>{% if r is mapping %}{{ r.text }}{{ source_link(r) }}{% else %}{{ r }}{% endif %}</div></li>{% endfor %}</ul>
+      {% elif t.risks %}
       <ul class="ilist risk">{% for r in t.risks %}<li><svg class="icon"><use href="#i-warn"/></svg>{{ r }}</li>{% endfor %}</ul>
       {% else %}<p>Существенных рисков не отмечено.</p>{% endif %}
+      {% if t.document_analysis %}<p class="analysis-meta">{{ t.document_analysis.openness }}</p>{% endif %}
     </div>
   </div>
 
@@ -81,7 +92,7 @@
         {% if kontur_url %}<a class="btn-sm" href="{{ kontur_url }}" target="_blank" rel="noopener">Открыть в Контур.Закупках</a>{% elif t.url %}<a class="btn-sm" href="{{ t.url }}" target="_blank" rel="noopener">Открыть источник</a>{% endif %}
         {% if etp_url and etp_url != kontur_url %}<a class="btn-sm" href="{{ etp_url }}" target="_blank" rel="noopener">Открыть на площадке</a>{% endif %}
         <button class="btn-sm teal" type="button" onclick="alert('Анализ документов ИИ будет доступен после подключения ИИ')">Прочесть документы</button>
-        <button class="btn-sm" type="button" onclick="alert('Загрузка файлов для ИИ-анализа будет доступна после подключения ИИ')">Загрузить файлы ИИ</button>
+        <button class="btn-sm" type="button" onclick="openTenderModal('documentAnalysisModal')">Загрузить файлы ИИ</button>
       </div>
       {% else %}
       <p>Документы не приложены к выгрузке. Откройте карточку в Контур.Закупках или на исходной площадке; если там нужна авторизация, запросите файлы у коллег письмом.</p>
@@ -89,7 +100,7 @@
         {% if kontur_url %}<a class="btn-sm" href="{{ kontur_url }}" target="_blank" rel="noopener">Открыть в Контур.Закупках</a>{% elif t.url %}<a class="btn-sm" href="{{ t.url }}" target="_blank" rel="noopener">Открыть источник</a>{% endif %}
         {% if etp_url and etp_url != kontur_url %}<a class="btn-sm" href="{{ etp_url }}" target="_blank" rel="noopener">Открыть на площадке</a>{% endif %}
         <button class="btn-sm" type="button" onclick="document.getElementById('mailForm').style.display='flex'">Запросить документы</button>
-        <button class="btn-sm" type="button" onclick="alert('Загрузка файлов для ИИ-анализа будет доступна после подключения ИИ')">Загрузить файлы ИИ</button>
+        <button class="btn-sm" type="button" onclick="openTenderModal('documentAnalysisModal')">Загрузить файлы ИИ</button>
       </div>
       <div class="mail-form" id="mailForm" style="display:none">
         <button class="mail-send" type="button" onclick="alert('Отправка на почту будет доступна после подключения почты (SMTP)')"><svg class="icon"><use href="#i-arrow-right"/></svg>Отправить</button>
@@ -102,10 +113,14 @@
       </div>
       {% endif %}
     </div>
-
     <div class="ibox b-pit">
       <h3>Подводные камни на основе документов</h3>
-      <p>Будет доступно после подключения ИИ-анализа документов. ИИ выделит скрытые условия, жёсткие требования, признаки «заточенности» под поставщика.</p>
+      {% if t.document_analysis %}
+      <ul class="ilist pit">{% for item in t.document_analysis.pitfalls %}<li><div>{% if item is mapping %}{{ item.text }}{{ source_link(item) }}{% else %}{{ item }}{% endif %}</div></li>{% endfor %}</ul>
+      <p class="analysis-meta">{{ t.document_analysis.summary }}</p>
+      {% else %}
+      <p style="color:var(--text-3)">Загрузите документацию: анализ выделит скрытые условия, жёсткие требования и признаки ограничения конкуренции.</p>
+      {% endif %}
     </div>
   </div>
 </div>
@@ -121,12 +136,77 @@
       <form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}"><input type="hidden" name="value" value="relevant"><button class="btn-ghost" type="submit">Это наш профиль</button></form>
     {% endif %}
     {% if override %}<form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}"><input type="hidden" name="value" value="auto"><button class="btn-ghost" type="submit">Вернуть авто-оценку</button></form>{% endif %}
+    {% if not (ret and ret.startswith('/irrelevant')) %}
     <form method="post" action="{{ url_for('toggle_not_pursued', tender_id=t.tender_id) }}" style="margin-left:auto">
       <button class="btn-ghost" type="submit">{{ 'Вернуть в работу' if not_pursued else 'Отметить «не пошли»' }}</button>
     </form>
+    {% endif %}
     <form method="post" action="{{ url_for('delete_tender_route', tender_id=t.tender_id) }}" onsubmit="return confirm('Удалить тендер из базы?')">
       <button class="btn-danger" type="submit">Удалить</button>
     </form>
   </div>
 </div>
+
+<div class="tender-modal" id="documentAnalysisModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="documentAnalysisTitle">
+  <div class="tender-modal__backdrop" onclick="closeTenderModal('documentAnalysisModal')"></div>
+  <div class="tender-modal__panel">
+    <button class="tender-modal__close" type="button" aria-label="Закрыть" onclick="closeTenderModal('documentAnalysisModal')">×</button>
+    <h2 id="documentAnalysisTitle">Анализ документов ИИ</h2>
+    <p>Добавьте до 20 файлов: TXT, MD, CSV, DOCX или PDF. Файлы сохраняются в карточке тендера, чтобы открыть источник каждого совета.</p>
+    <form id="documentAnalysisForm" method="post" action="{{ url_for('tender_analyze_documents', tender_id=t.tender_id) }}" enctype="multipart/form-data">
+      <label class="file-drop" for="tenderDocuments">
+        <input id="tenderDocuments" name="documents" type="file" multiple required accept=".txt,.md,.csv,.docx,.pdf" onchange="showDocumentNames(this)">
+        <span>Выберите файлы или перетащите их сюда</span>
+        <small id="documentNames">Не более 5 МБ на файл, 20 МБ суммарно</small>
+      </label>
+      <label class="analysis-check"><input type="checkbox" name="include_recommendations" value="1"> <span>Показать рекомендации по подготовке коммерческого предложения</span></label>
+      <div class="tender-modal__actions"><button class="btn-sm teal" type="submit">Проанализировать</button><button class="btn-sm" type="button" onclick="closeTenderModal('documentAnalysisModal')">Отмена</button></div>
+    </form>
+  </div>
+</div>
+
+<div class="analysis-loading" id="analysisLoading" hidden role="status" aria-live="assertive" aria-label="Документы анализируются">
+  <div class="analysis-loading__card">
+    <span class="analysis-loading__spinner" aria-hidden="true"></span>
+    <h2>ИИ читает документы</h2>
+    <p>Это может занять до пары минут. Не закрывайте страницу — результат появится в карточке тендера.</p>
+  </div>
+</div>
+
+{% if t.document_analysis and t.document_analysis.recommendations %}
+<div class="tender-modal" id="recommendationsModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="recommendationsTitle">
+  <div class="tender-modal__backdrop" onclick="closeTenderModal('recommendationsModal')"></div>
+  <div class="tender-modal__panel">
+    <button class="tender-modal__close" type="button" aria-label="Закрыть" onclick="closeTenderModal('recommendationsModal')">×</button>
+    <h2 id="recommendationsTitle">Рекомендации к коммерческому предложению</h2>
+    <ul class="recommendations-list">
+      {% for item in t.document_analysis.recommendations %}
+      <li>
+        {% if item is mapping %}
+          <span>{{ item.text }}</span>
+          {{ source_link(item) }}
+        {% else %}
+          <span>{{ item }}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% if not t.document_analysis.recommendations %}<p class="analysis-meta">Рекомендации не сформированы. Повторите анализ с включённой галочкой «Показать рекомендации».</p>{% endif %}
+    <div class="tender-modal__actions"><button class="btn-sm" type="button" onclick="closeTenderModal('recommendationsModal')">Закрыть</button></div>
+  </div>
+</div>
+{% endif %}
+
+<script>
+function openTenderModal(id) { const modal = document.getElementById(id); if (modal) { modal.classList.add('is-open'); modal.setAttribute('aria-hidden', 'false'); } }
+function closeTenderModal(id) { const modal = document.getElementById(id); if (modal) { modal.classList.remove('is-open'); modal.setAttribute('aria-hidden', 'true'); } }
+function showDocumentNames(input) { document.getElementById('documentNames').textContent = input.files.length ? Array.from(input.files).map(f => f.name).join(', ') : 'Не более 5 МБ на файл, 20 МБ суммарно'; }
+document.getElementById('documentAnalysisForm')?.addEventListener('submit', function () {
+  const loading = document.getElementById('analysisLoading');
+  loading.hidden = false;
+  document.body.classList.add('analysis-in-progress');
+  const submit = this.querySelector('button[type="submit"]');
+  if (submit) { submit.disabled = true; submit.textContent = 'Анализируем…'; }
+});
+</script>
 {% endblock %}

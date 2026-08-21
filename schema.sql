@@ -50,6 +50,17 @@ CREATE TABLE IF NOT EXISTS tenders (
     times_seen            INTEGER DEFAULT 1   -- сколько раз встречено
 );
 
+-- Кэш проверки размера компании по ИНН через ГИР БО ФНС.
+CREATE TABLE IF NOT EXISTS company_revenue_cache (
+    inn          TEXT PRIMARY KEY,
+    company_name TEXT,
+    revenue_rub  INTEGER,
+    report_year  INTEGER,
+    source       TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    checked_at   TEXT NOT NULL
+);
+
 
 -- ----------------------------------------------------------------------------
 --  Пользователи (многопользовательский режим). Создаётся app.py.
@@ -109,6 +120,20 @@ CREATE TABLE IF NOT EXISTS tender_meta (
     relevance   TEXT,
     not_pursued INTEGER DEFAULT 0,
     stage       TEXT
+);
+
+-- Результаты анализа загруженной документации. Исходные файлы и их текст
+-- намеренно не хранятся: остаются только имена файлов и структурированный итог.
+CREATE TABLE IF NOT EXISTS tender_document_analyses (
+    tender_id       TEXT PRIMARY KEY,
+    documents       TEXT NOT NULL,
+    risks           TEXT NOT NULL,
+    pitfalls        TEXT NOT NULL,
+    recommendations TEXT NOT NULL,
+    openness        TEXT,
+    summary         TEXT,
+    analyzer        TEXT NOT NULL,
+    analyzed_at     TEXT NOT NULL
 );
 
 

@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Callable
 from zipfile import BadZipFile
 from datetime import date, datetime
 from pathlib import PurePosixPath
@@ -18,7 +19,7 @@ import company_size
 import directions
 import storage
 from icp_config import load_icp
-from scoring import score_tender
+from scoring import score_tender, score_tender_llm
 
 
 SOURCE_NAME = "kontur-excel"
@@ -74,6 +75,44 @@ def _deadline_disposition(tender: dict, now: datetime) -> str | None:
     if remaining.days <= 3 and directions.classify(tender) != "license":
         return "short_non_license"
     return None
+
+
+def _revenue_evidence(check: company_size.RevenueCheck) -> tuple[str, str]:
+    if check.source == "local-name-registry":
+        return (
+            "Компания входит в локальный реестр организаций с оборотом от 10 млрд ₽",
+            "крупная компания по реестру",
+        )
+    year_note = f" за {check.report_year} год" if check.report_year else ""
+    return (
+        "Размер компании-заказчика больше 10 млрд ₽: "
+        f"подтверждён оборот {company_size.revenue_human_value(check.revenue_rub)}"
+        f"{year_note}",
+        "оборот подтверждён",
+    )
+
+
+def _is_government(details: dict | None) -> bool:
+    details = details or {}
+    trade_type = str(details.get("trade_type") or "").lower().replace(" ", "")
+    government_law = any(marker in trade_type for marker in (
+        "44-фз", "223-фз", "615ппрф", "615-пп",
+    ))
+    return bool(details.get("eis_number") or details.get("eis_url") or government_law)
+
+
+def _without_revenue_evidence(reasons, labels) -> tuple[list[str], list[str]]:
+    clean_reasons = [str(value) for value in (reasons or []) if not (
+        str(value).lower().startswith("оборот заказчика") or
+        str(value).lower().startswith("размер компании-заказчика") or
+        "не удалось подтвердить" in str(value).lower() or
+        str(value).lower().startswith("компания входит в локальный реестр")
+    )]
+    clean_labels = [str(value) for value in (labels or []) if str(value) not in {
+        "оборот подтверждён", "оборот не подтверждён",
+        "крупная компания по реестру",
+    }]
+    return clean_reasons, clean_labels
 
 
 def _number(value) -> int | float | None:
@@ -222,7 +261,8 @@ def parse_kontur_xlsx(source) -> dict:
             etp_url = _hyperlink(etp_cell) if etp_cell else None
             eis_value = value("eis_url")
             eis_cell = ws.cell(row_number, columns["eis_url"]) if columns.get("eis_url") else None
-            eis_url = _hyperlink(eis_cell) if eis_cell else _text(eis_value) or None
+            eis_url = ((_hyperlink(eis_cell) if eis_cell else None) or
+                       _direct_url(_text(eis_value)) or None)
 
             amount = _number(value("price"))
             currency = _text(value("currency"))
@@ -290,20 +330,47 @@ def parse_kontur_xlsx(source) -> dict:
 
 
 def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
-                       now: datetime | None = None) -> dict:
+                       now: datetime | None = None, use_llm: bool = False,
+                       progress_callback: Callable[[dict[str, int]], None] | None = None,
+                       revenue_client: company_size.FnsGirBoRevenueClient | None = None,
+                       name_registry_path: str | None = None,
+                       verified_registry_path: str | None = None) -> dict:
     """Импортирует Excel, применяя текущий фильтр компаний и скоринг приложения."""
     parsed = parse_kontur_xlsx(source)
     icp = icp or load_icp()
     own_connection = conn is None
     conn = conn or storage.connect()
     now = now or datetime.now()
+    llm_scorer = None
+    if use_llm:
+        from LLM_scoring import OpenAITenderScorer
+
+        llm_scorer = OpenAITenderScorer()
+    revenue_client = revenue_client or company_size.FnsGirBoRevenueClient()
     kept: list[dict] = []
     skipped_small = 0
+    skipped_unverified = 0
+    kept_government = 0
+    revenue_api_checks = 0
+    revenue_cache_hits = 0
     skipped_expired = 0
     skipped_short = 0
     purge_ids: set[str] = set()
+    found = len(parsed["items"])
+    processed = 0
+    llm_scored = 0
+
+    def report_progress() -> None:
+        if progress_callback is not None:
+            progress_callback({
+                "found": found,
+                "processed": processed,
+                "llm_scored": llm_scored,
+                "remaining": found - processed,
+            })
 
     try:
+        report_progress()
         # Чистим ранее загруженные из Контура записи по тому же правилу, даже
         # если их уже нет в свежей выгрузке.
         for existing in storage.query_tenders(conn, limit=None):
@@ -311,39 +378,114 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
                 continue
             if _deadline_disposition(existing, now):
                 purge_ids.add(existing["tender_id"])
+            reasons = existing.get("reasons") or []
+            labels = existing.get("labels") or []
+            details = existing.get("details")
+            if isinstance(details, str):
+                try:
+                    details = json.loads(details)
+                except (TypeError, ValueError):
+                    details = {}
+            status = (details or {}).get("customer_turnover_status")
+            old_unverified_text = any(
+                "нужно подтвердить" in str(reason).lower() or
+                "не удалось подтвердить" in str(reason).lower()
+                for reason in reasons
+            )
+            if (not _is_government(details) and
+                    (status in {"no_data", "not_found", "invalid_inn", "invalid_name",
+                                "name_mismatch"} or
+                     "оборот не подтверждён" in labels or old_unverified_text)):
+                purge_ids.add(existing["tender_id"])
 
         for source_item in parsed["items"]:
             item = dict(source_item)
             details = item.pop("_details", {})
-            if not company_size.passes_revenue(item.get("customer")):
-                skipped_small += 1
-                purge_ids.add(item["tender_id"])
-                continue
             disposition = _deadline_disposition(item, now)
             if disposition == "expired":
                 skipped_expired += 1
                 purge_ids.add(item["tender_id"])
+                processed += 1
+                report_progress()
                 continue
             if disposition == "short_non_license":
                 skipped_short += 1
                 purge_ids.add(item["tender_id"])
+                processed += 1
+                report_progress()
                 continue
 
+            is_government = _is_government(details)
+            revenue_check = None
+            if is_government:
+                kept_government += 1
+            else:
+                revenue_check = company_size.check_revenue_by_inn(
+                    conn,
+                    details.get("customer_inn"),
+                    item.get("customer"),
+                    client=revenue_client,
+                    now=now,
+                    name_registry_path=name_registry_path,
+                    verified_registry_path=verified_registry_path,
+                )
+                if revenue_check.from_cache:
+                    revenue_cache_hits += 1
+                elif revenue_check.source.startswith("fns-gir-bo"):
+                    revenue_api_checks += 1
+                if not revenue_check.passes:
+                    if revenue_check.is_confirmed:
+                        skipped_small += 1
+                    else:
+                        skipped_unverified += 1
+                    purge_ids.add(item["tender_id"])
+                    processed += 1
+                    report_progress()
+                    continue
+            purge_ids.discard(item["tender_id"])
+
             item["days_left"] = _days_left(item.get("deadline"), now)
-            result = score_tender(item, icp)
+            result = (
+                score_tender_llm(item, icp, scorer=llm_scorer)
+                if llm_scorer is not None
+                else score_tender(item, icp)
+            )
+            if llm_scorer is not None:
+                llm_scored += 1
             item["score"] = result.score
             item["verdict"] = result.verdict
-            revenue = company_size.annual_revenue_rub(item.get("customer"))
-            if revenue is not None:
-                revenue_reason = "Оборот заказчика не ниже 10 млрд ₽ — основной критерий выполнен"
-                revenue_label = "оборот подтверждён"
+            if is_government:
+                item["reasons"] = list(result.reasons)
+                item["labels"] = list(result.labels)
+                details.update({
+                    "customer_revenue_rub": None,
+                    "customer_turnover_rub": None,
+                    "customer_revenue_year": None,
+                    "customer_turnover_year": None,
+                    "customer_revenue_source": "government-exempt",
+                    "customer_turnover_source": "government-exempt",
+                    "customer_turnover_status": "not_applicable_government",
+                    "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
+                })
             else:
-                revenue_reason = "Оборот заказчика нужно подтвердить: основной порог — 10 млрд ₽"
-                revenue_label = "оборот не подтверждён"
-            item["reasons"] = [revenue_reason, *result.reasons]
-            item["labels"] = [revenue_label, *result.labels]
+                revenue_reason, revenue_label = _revenue_evidence(revenue_check)
+                item["reasons"] = [revenue_reason, *result.reasons]
+                item["labels"] = [revenue_label, *result.labels]
+                details.update({
+                    "customer_inn": revenue_check.inn or details.get("customer_inn"),
+                    "customer_revenue_rub": revenue_check.revenue_rub,
+                    "customer_turnover_rub": revenue_check.revenue_rub,
+                    "customer_revenue_year": revenue_check.report_year,
+                    "customer_turnover_year": revenue_check.report_year,
+                    "customer_revenue_source": revenue_check.source,
+                    "customer_turnover_source": revenue_check.source,
+                    "customer_turnover_status": revenue_check.status,
+                    "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
+                })
             item["_details"] = details
             kept.append(item)
+            processed += 1
+            report_progress()
 
         removed = storage.delete_tenders(conn, purge_ids, commit=False)
         to_save = [{key: val for key, val in item.items() if key != "_details"} for item in kept]
@@ -361,6 +503,11 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
             "parsed": len(parsed["items"]),
             "skipped_blank": parsed["skipped_blank"],
             "skipped_small_company": skipped_small,
+            "kept_unverified_company": 0,
+            "skipped_unverified_company": skipped_unverified,
+            "kept_government": kept_government,
+            "revenue_api_checks": revenue_api_checks,
+            "revenue_cache_hits": revenue_cache_hits,
             "skipped_expired": skipped_expired,
             "skipped_short_non_license": skipped_short,
             "removed_by_deadline": removed,
@@ -369,6 +516,104 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
             "new_ids": list(saved.get("new", [])),
             "updated": len(saved.get("updated", [])),
         }
+    finally:
+        if own_connection:
+            conn.close()
+
+
+def recheck_kontur_companies(conn=None,
+                             revenue_client: company_size.FnsGirBoRevenueClient | None = None,
+                             now: datetime | None = None,
+                             name_registry_path: str | None = None,
+                             verified_registry_path: str | None = None,
+                             progress_callback: Callable[[dict[str, int]], None] | None = None
+                             ) -> dict:
+    """Повторно проверяет уже сохранённые тендеры и удаляет неподтверждённые."""
+    own_connection = conn is None
+    conn = conn or storage.connect()
+    service = revenue_client or company_size.FnsGirBoRevenueClient()
+    now = now or datetime.now()
+    rows = [row for row in storage.query_tenders(conn, limit=None)
+            if row.get("source") == SOURCE_NAME]
+    removed_ids: list[str] = []
+    kept = 0
+    sources: dict[str, int] = {}
+    try:
+        for index, tender in enumerate(rows, 1):
+            details = tender.get("details")
+            if isinstance(details, str):
+                try:
+                    details = json.loads(details)
+                except (TypeError, ValueError):
+                    details = {}
+            details = details or {}
+            if _is_government(details):
+                reasons, labels = _without_revenue_evidence(
+                    tender.get("reasons"), tender.get("labels"),
+                )
+                details.update({
+                    "customer_revenue_rub": None,
+                    "customer_turnover_rub": None,
+                    "customer_revenue_year": None,
+                    "customer_turnover_year": None,
+                    "customer_revenue_source": "government-exempt",
+                    "customer_turnover_source": "government-exempt",
+                    "customer_turnover_status": "not_applicable_government",
+                    "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
+                })
+                conn.execute(
+                    "UPDATE tenders SET reasons = ?, labels = ?, details = ? "
+                    "WHERE tender_id = ?",
+                    (json.dumps(reasons, ensure_ascii=False),
+                     json.dumps(labels, ensure_ascii=False),
+                     json.dumps(details, ensure_ascii=False), tender["tender_id"]),
+                )
+                kept += 1
+                sources["government-exempt"] = sources.get("government-exempt", 0) + 1
+            else:
+                check = company_size.check_revenue_by_inn(
+                    conn, details.get("customer_inn"), tender.get("customer"),
+                    client=service, now=now,
+                    name_registry_path=name_registry_path,
+                    verified_registry_path=verified_registry_path,
+                )
+                if not check.passes:
+                    removed_ids.append(tender["tender_id"])
+                else:
+                    reason, label = _revenue_evidence(check)
+                    reasons, labels = _without_revenue_evidence(
+                        tender.get("reasons"), tender.get("labels"),
+                    )
+                    details.update({
+                        "customer_inn": check.inn or details.get("customer_inn"),
+                        "customer_revenue_rub": check.revenue_rub,
+                        "customer_turnover_rub": check.revenue_rub,
+                        "customer_revenue_year": check.report_year,
+                        "customer_turnover_year": check.report_year,
+                        "customer_revenue_source": check.source,
+                        "customer_turnover_source": check.source,
+                        "customer_turnover_status": check.status,
+                        "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
+                    })
+                    conn.execute(
+                        "UPDATE tenders SET reasons = ?, labels = ?, details = ? "
+                        "WHERE tender_id = ?",
+                        (json.dumps([reason, *reasons], ensure_ascii=False),
+                         json.dumps([label, *labels], ensure_ascii=False),
+                         json.dumps(details, ensure_ascii=False), tender["tender_id"]),
+                    )
+                    kept += 1
+                    sources[check.source] = sources.get(check.source, 0) + 1
+            if progress_callback is not None:
+                progress_callback({"processed": index, "found": len(rows),
+                                   "remaining": len(rows) - index})
+        removed = storage.delete_tenders(conn, removed_ids, commit=False)
+        conn.commit()
+        return {"checked": len(rows), "kept": kept, "removed": removed,
+                "sources": sources}
+    except Exception:
+        conn.rollback()
+        raise
     finally:
         if own_connection:
             conn.close()
