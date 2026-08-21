@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+from collections.abc import Callable
 from zipfile import BadZipFile
 from datetime import date, datetime
 from pathlib import PurePosixPath
@@ -18,7 +19,7 @@ import company_size
 import directions
 import storage
 from icp_config import load_icp
-from scoring import score_tender
+from scoring import score_tender, score_tender_llm
 
 
 SOURCE_NAME = "kontur-excel"
@@ -290,20 +291,39 @@ def parse_kontur_xlsx(source) -> dict:
 
 
 def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
-                       now: datetime | None = None) -> dict:
+                       now: datetime | None = None, use_llm: bool = False,
+                       progress_callback: Callable[[dict[str, int]], None] | None = None) -> dict:
     """Импортирует Excel, применяя текущий фильтр компаний и скоринг приложения."""
     parsed = parse_kontur_xlsx(source)
     icp = icp or load_icp()
     own_connection = conn is None
     conn = conn or storage.connect()
     now = now or datetime.now()
+    llm_scorer = None
+    if use_llm:
+        from LLM_scoring import OpenAITenderScorer
+
+        llm_scorer = OpenAITenderScorer()
     kept: list[dict] = []
     skipped_small = 0
     skipped_expired = 0
     skipped_short = 0
     purge_ids: set[str] = set()
+    found = len(parsed["items"])
+    processed = 0
+    llm_scored = 0
+
+    def report_progress() -> None:
+        if progress_callback is not None:
+            progress_callback({
+                "found": found,
+                "processed": processed,
+                "llm_scored": llm_scored,
+                "remaining": found - processed,
+            })
 
     try:
+        report_progress()
         # Чистим ранее загруженные из Контура записи по тому же правилу, даже
         # если их уже нет в свежей выгрузке.
         for existing in storage.query_tenders(conn, limit=None):
@@ -318,19 +338,31 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
             if not company_size.passes_revenue(item.get("customer")):
                 skipped_small += 1
                 purge_ids.add(item["tender_id"])
+                processed += 1
+                report_progress()
                 continue
             disposition = _deadline_disposition(item, now)
             if disposition == "expired":
                 skipped_expired += 1
                 purge_ids.add(item["tender_id"])
+                processed += 1
+                report_progress()
                 continue
             if disposition == "short_non_license":
                 skipped_short += 1
                 purge_ids.add(item["tender_id"])
+                processed += 1
+                report_progress()
                 continue
 
             item["days_left"] = _days_left(item.get("deadline"), now)
-            result = score_tender(item, icp)
+            result = (
+                score_tender_llm(item, icp, scorer=llm_scorer)
+                if llm_scorer is not None
+                else score_tender(item, icp)
+            )
+            if llm_scorer is not None:
+                llm_scored += 1
             item["score"] = result.score
             item["verdict"] = result.verdict
             revenue = company_size.annual_revenue_rub(item.get("customer"))
@@ -344,6 +376,8 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
             item["labels"] = [revenue_label, *result.labels]
             item["_details"] = details
             kept.append(item)
+            processed += 1
+            report_progress()
 
         removed = storage.delete_tenders(conn, purge_ids, commit=False)
         to_save = [{key: val for key, val in item.items() if key != "_details"} for item in kept]

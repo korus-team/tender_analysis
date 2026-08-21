@@ -25,9 +25,6 @@
     <div class="tcard-price">{{ t.price_fmt }}</div>
     <div class="tcard-deadline">{% if t.deadline_date_fmt != '—' %}<span>Подача заявок<br>до {{ t.deadline_date_fmt }}<br>{{ t.deadline_time_fmt }}</span>{% if t.deadline_reminder %}<b class="soon">{{ t.time_left_fmt }}</b>{% endif %}{% else %}<span>Срок подачи<br>не указан</span>{% endif %}</div>
   </div>
-  {% if t.np %}
-  <form method="post" action="{{ url_for('toggle_not_pursued', tender_id=t.tender_id) }}"><button class="btn-sm" type="submit">Вернуть в работу</button></form>
-  {% endif %}
 </div>
 {% endfor %}
 {% if total_pages > 1 %}
