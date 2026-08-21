@@ -3,13 +3,13 @@
     <div class="tmain">
       <div class="ttitle">{{ t.title }}</div>
       <div class="ttags">
-        <span class="ttag ttag-{{ 'license' if t.is_license else 'type' }}">{{ t.direction_name }}</span>
+        {% if t.is_license %}<span class="ttag ttag-license">Лицензионный</span>{% endif %}
         {% if t.ptype %}<span class="ttag ttag-{{ t.ptype }}">{{ t.ptype_label }}</span>{% endif %}
         {% if taken_by.get(t.tender_id) %}<span class="ttag ttag-taken">Взято: {{ taken_by[t.tender_id] }}</span>{% endif %}
       </div>
     </div>
     <div class="tmeta">
-      <span class="tdays {{ 'soon' if t.deadline_soon }}">{{ t.time_left_fmt }}</span>
+      <span class="tdays {{ 'soon' if t.deadline_reminder }}">{% if t.deadline_fmt != '—' %}до {{ t.deadline_fmt }}{% else %}срок не указан{% endif %}</span>
       <span class="tscore">{{ t.score }}% соответствие</span>
     </div>
   </a>

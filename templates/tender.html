@@ -31,20 +31,56 @@
 </div>
 
 <div class="meta-row">
-  <div class="meta-item"><div class="ml">Заказчик</div><div class="mv">{{ t.customer or 'Скрыт площадкой' }}</div></div>
-  <div class="meta-item"><div class="ml">Стоимость</div><div class="mv">{{ t.price_fmt }}</div></div>
-  <div class="meta-item"><div class="ml">Окончание подачи заявок</div><div class="mv {{ 'soon' if t.deadline_soon }}">{% if t.deadline_fmt and t.deadline_fmt != '—' %}{{ t.deadline_fmt }} · {{ t.time_left_fmt }}{% else %}—{% endif %}</div></div>
-  <div class="meta-item"><div class="ml">Тип закупки</div><div class="mv">{% if t.ptype=='gov' %}Государственный{% elif t.ptype=='com' %}Коммерческий{% else %}{{ t.direction_name }}{% endif %}</div></div>
+  <div class="meta-item">
+    <div class="ml">Заказчик</div>
+    <div class="mv">{{ t.customer or 'Скрыт площадкой' }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="ml">Стоимость</div>
+    <div class="mv">{{ t.price_fmt }}</div>
+  </div>
+  <div class="meta-item">
+    <div class="ml">Окончание подачи заявок</div>
+    <div class="mv {{ 'soon' if t.deadline_soon }}">{% if t.deadline_fmt and t.deadline_fmt != '—' %}{{ t.deadline_fmt }}{% else %}—{% endif %}</div>
+  </div>
+  <div class="meta-item">
+    <div class="ml">Тип закупки</div>
+    <div class="mv">{% if t.ptype=='gov' %}Государственный{% elif t.ptype=='com' %}Коммерческий{% else %}{{ t.direction_name }}{% endif %}</div>
+  </div>
 </div>
 
-<div class="two-col">
-  <div>
+<div class="tender-content-grid">
+  <div class="tender-left-stack">
     <div class="ibox b-desc">
-      <h3>Описание проекта</h3>
-      <p>{{ t.subject or 'Описание не указано на площадке. Полный текст обычно лежит в файле «Описание объекта закупки» — см. документы ниже.' }}</p>
-      {% if t.details and t.details.eis_url %}<p style="margin-top:10px"><a href="{{ t.details.eis_url }}" target="_blank" rel="noopener" class="pill-eis">{% if t.details.eis_number %}ЕИС {{ t.details.eis_number }}{% else %}Открыть в ЕИС{% endif %}</a></p>{% endif %}
-    </div>
+    <h3>Описание проекта</h3>
+    <p>{{ t.subject or 'Описание не указано на площадке. Полный текст обычно лежит в файле «Описание объекта закупки» — см. документы ниже.' }}</p>
+    {% if t.details and t.details.eis_url %}<p style="margin-top:10px"><a href="{{ t.details.eis_url }}" target="_blank" rel="noopener" class="pill-eis">{% if t.details.eis_number %}ЕИС {{ t.details.eis_number }}{% else %}Открыть в ЕИС{% endif %}</a></p>{% endif %}
+  </div>
 
+    <div class="ibox b-why">
+      <h3>Почему подходит?</h3>
+      {% if t.reasons %}
+      <ul class="ilist ok">{% for r in t.reasons %}<li><svg class="icon"><use href="#i-check"/></svg>{{ r }}</li>{% endfor %}</ul>
+      {% else %}<p>Факторы оценки не сохранены.</p>{% endif %}
+      {% if t.document_analysis and t.document_analysis.recommendations %}
+      <button class="btn-sm teal analysis-open-btn" type="button" onclick="openTenderModal('recommendationsModal')">Посмотреть рекомендации</button>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="tender-side-stack">
+    <div class="ibox b-risk">
+      <h3>Риски</h3>
+      {% if t.document_analysis and t.document_analysis.risks %}
+      <ul class="ilist risk">{% for r in t.document_analysis.risks %}<li><svg class="icon"><use href="#i-warn"/></svg><div>{% if r is mapping %}{{ r.text }}{{ source_link(r) }}{% else %}{{ r }}{% endif %}</div></li>{% endfor %}</ul>
+      {% elif t.risks %}
+      <ul class="ilist risk">{% for r in t.risks %}<li><svg class="icon"><use href="#i-warn"/></svg>{{ r }}</li>{% endfor %}</ul>
+      {% else %}<p>Существенных рисков не отмечено.</p>{% endif %}
+      {% if t.document_analysis %}<p class="analysis-meta">{{ t.document_analysis.openness }}</p>{% endif %}
+    </div>
+  </div>
+
+  <div class="tender-docs-row">
     <div class="ibox b-docs">
       <h3>Документы</h3>
       {% set kontur_url = t.details.kontur_url if t.details and t.details.kontur_url else (t.url if t.source == 'kontur-excel' else none) %}
@@ -78,29 +114,6 @@
       </div>
       {% endif %}
     </div>
-  </div>
-
-  <div>
-    <div class="ibox b-why">
-      <h3>Почему подходит?</h3>
-      {% if t.reasons %}
-      <ul class="ilist ok">{% for r in t.reasons %}<li><svg class="icon"><use href="#i-check"/></svg>{{ r }}</li>{% endfor %}</ul>
-      {% else %}<p>Факторы оценки не сохранены.</p>{% endif %}
-      {% if t.document_analysis and t.document_analysis.recommendations %}
-      <button class="btn-sm teal analysis-open-btn" type="button" onclick="openTenderModal('recommendationsModal')">Посмотреть рекомендации</button>
-      {% endif %}
-    </div>
-
-    <div class="ibox b-risk">
-      <h3>Риски</h3>
-      {% if t.document_analysis and t.document_analysis.risks %}
-      <ul class="ilist risk">{% for r in t.document_analysis.risks %}<li><svg class="icon"><use href="#i-warn"/></svg><div>{% if r is mapping %}{{ r.text }}{{ source_link(r) }}{% else %}{{ r }}{% endif %}</div></li>{% endfor %}</ul>
-      {% elif t.risks %}
-      <ul class="ilist risk">{% for r in t.risks %}<li><svg class="icon"><use href="#i-warn"/></svg>{{ r }}</li>{% endfor %}</ul>
-      {% else %}<p>Существенных рисков не отмечено.</p>{% endif %}
-      {% if t.document_analysis %}<p class="analysis-meta">{{ t.document_analysis.openness }}</p>{% endif %}
-    </div>
-
     <div class="ibox b-pit">
       <h3>Подводные камни на основе документов</h3>
       {% if t.document_analysis %}
@@ -113,7 +126,7 @@
   </div>
 </div>
 
-<div class="card" style="margin-top:6px">
+<div class="card" style="margin-top:20px">
   <h3>Оценка и статус</h3>
   <div class="hint" style="margin-bottom:12px">Если система ошиблась с профилем — поправьте (это улучшит подбор). «Не пошли» — если решили не участвовать.</div>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">

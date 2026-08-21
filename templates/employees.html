@@ -25,7 +25,7 @@
     <div class="trow">
       <a class="row-link" href="{{ url_for('tender', tender_id=t.tender_id, ret='/employees') }}">
         <div class="tmain"><div class="ttitle">{{ t.title }}</div><div><span class="tag">{{ t.category }}</span></div></div>
-        <div class="tmeta"><span class="pct {{ t.level }}">{{ t.score }}%</span><span class="cost">{{ t.price_fmt }}</span><span class="days">{{ t.time_left_fmt }}</span></div>
+        <div class="tmeta"><span class="pct {{ t.level }}">{{ t.score }}%</span><span class="cost">{{ t.price_fmt }}</span><span class="days">{% if t.deadline_fmt != '—' %}до {{ t.deadline_fmt }}{% else %}срок не указан{% endif %}</span></div>
       </a>
     </div>
     {% endfor %}

@@ -4,13 +4,12 @@
     {% if notif_count %}<span class="notif-dot">{{ notif_count }}</span>{% endif %}
   </button>
   <div class="notif-panel" id="notifPanel">
-    <div class="notif-head"><span>Уведомления</span>{% if notif_count %}<span style="color:var(--orange)">{{ notif_count }} новых</span>{% endif %}</div>
+    <div class="notif-head"><span>Уведомления</span>{% if notif_count %}<span class="notif-new-count">{{ notif_count }} новых</span>{% endif %}</div>
     {% if notifications %}
       {% for n in notifications %}
-      <a class="notif-item {{ 'read' if n.read }}" href="{{ n.url }}">
-        <span class="notif-ic"><svg class="icon"><use href="#{{ n.icon or 'i-bell' }}"/></svg></span>
+      <a class="notif-item" href="{{ n.url }}">
         <span class="notif-tbody"><span class="notif-title">{{ n.title }}</span><span class="notif-meta">{{ n.meta }}</span></span>
-        {% if not n.read %}<span class="notif-unread" aria-label="Непрочитано"></span>{% endif %}
+        <span class="notif-unread" aria-label="Непрочитано"></span>
       </a>
       {% endfor %}
     {% else %}
