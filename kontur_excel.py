@@ -354,7 +354,6 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
                 processed += 1
                 report_progress()
                 continue
-
             item["days_left"] = _days_left(item.get("deadline"), now)
             result = (
                 score_tender_llm(item, icp, scorer=llm_scorer)

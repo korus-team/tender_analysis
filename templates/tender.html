@@ -15,7 +15,7 @@
     <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-label" type="submit"><svg class="icon"><use href="#i-plus"/></svg>Добавить метку</button></form>
   {% endif %}
   {% if taken_by.get(t.tender_id) %}<span class="ttag ttag-taken">Взято: {{ taken_by[t.tender_id] }}</span>{% endif %}
-  <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}" style="margin-left:auto">
+  <form class="favorite-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}" style="margin-left:auto">
     <button class="tcard-heart {{ 'on' if t.tender_id in my_fav_ids }}" type="submit" aria-label="В избранное"><svg class="icon"><use href="#i-heart"/></svg></button>
   </form>
 </div>
@@ -47,6 +47,12 @@
     <div class="ml">Тип закупки</div>
     <div class="mv">{% if t.ptype=='gov' %}Государственный{% elif t.ptype=='com' %}Коммерческий{% else %}{{ t.direction_name }}{% endif %}</div>
   </div>
+  {% if t.law %}
+  <div class="meta-item">
+    <div class="ml">Закон</div>
+    <div class="mv"><span class="ttag ttag-law">{{ t.law }}</span></div>
+  </div>
+  {% endif %}
 </div>
 
 <div class="tender-content-grid">
@@ -154,6 +160,7 @@
     <h2 id="documentAnalysisTitle">Анализ документов ИИ</h2>
     <p>Добавьте до 20 файлов: TXT, MD, CSV, DOCX или PDF. Файлы сохраняются в карточке тендера, чтобы открыть источник каждого совета.</p>
     <form id="documentAnalysisForm" method="post" action="{{ url_for('tender_analyze_documents', tender_id=t.tender_id) }}" enctype="multipart/form-data">
+      <input type="hidden" name="ret" value="{{ request.args.get('ret', '') }}">
       <label class="file-drop" for="tenderDocuments">
         <input id="tenderDocuments" name="documents" type="file" multiple required accept=".txt,.md,.csv,.docx,.pdf" onchange="showDocumentNames(this)">
         <span>Выберите файлы или перетащите их сюда</span>

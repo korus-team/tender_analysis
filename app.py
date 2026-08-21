@@ -290,6 +290,7 @@ def _annotate(tenders):
             t["ptype"], t["ptype_label"] = "com", "Коммерческая"
         else:
             t["ptype"], t["ptype_label"] = None, None
+        t["law"] = _law_tag(t)
         # уровень соответствия
         _apply_level(t)
         # цена / заказчик / риски
@@ -608,7 +609,11 @@ def _save_document_analysis(conn, tender_id, documents, result):
 
 def _law_tag(t):
     """Тег закона по тексту закупки (лёгкая эвристика, где закон упомянут)."""
-    txt = ((t.get("title") or "") + " " + (t.get("subject") or "")).lower()
+    details = t.get("details") if isinstance(t.get("details"), dict) else {}
+    txt = " ".join(str(part) for part in (
+        t.get("title"), t.get("subject"), t.get("category"),
+        details.get("trade_type"), details.get("method"), details.get("tag"),
+    ) if part).lower()
     if "223" in txt:
         return "223-ФЗ"
     if "44-фз" in txt or "44 фз" in txt or "44фз" in txt:
@@ -1115,6 +1120,9 @@ def tender_analyze_documents(tender_id):
     if 'result' in locals():
         source = "OpenAI" if result["analyzer"] == "openai" else "локальный экспресс-анализ"
         flash(f"Документы проанализированы: {source}.")
+    ret = (request.form.get("ret") or "").strip()
+    if ret.startswith("/") and not ret.startswith("//") and "\\" not in ret:
+        return redirect(url_for("tender", tender_id=tender_id, ret=ret))
     return redirect(url_for("tender", tender_id=tender_id))
 
 
@@ -1501,6 +1509,8 @@ def toggle_favorite(tender_id):
             "SELECT user_id FROM user_favorites WHERE tender_id = ?", (tender_id,)).fetchone()
         if taken and taken["user_id"] != uid:
             conn.close()
+            if request.accept_mimetypes.best == "application/json":
+                return jsonify(ok=False, error="Этот тендер уже забрал другой сотрудник"), 409
             flash("Этот тендер уже забрал другой сотрудник", "err")
             return redirect(request.referrer or url_for("tenders"))
         now = datetime.now().isoformat(timespec="seconds")
@@ -1513,6 +1523,8 @@ def toggle_favorite(tender_id):
             (uid, session.get("username"), tender_id, (t.get("title") if t else None), now))
     conn.commit()
     conn.close()
+    if request.accept_mimetypes.best == "application/json":
+        return jsonify(ok=True, favorite=not bool(mine))
     return redirect(request.referrer or url_for("tenders"))
 
 
