@@ -117,7 +117,7 @@ class KonturExcelTests(unittest.TestCase):
         with self.assertRaises(KonturExcelError):
             parse_kontur_xlsx(data)
 
-    def test_deadline_policy_keeps_all_nonexpired_tenders(self):
+    def test_deadline_policy_keeps_only_licenses_at_three_days_or_less(self):
         with tempfile.TemporaryDirectory() as tmp:
             conn = storage.connect(str(Path(tmp) / "test.db"))
             initial = import_kontur_xlsx(
@@ -136,12 +136,13 @@ class KonturExcelTests(unittest.TestCase):
             current = import_kontur_xlsx(
                 deadline_workbook(), conn=conn, now=datetime(2026, 8, 18, 12, 0)
             )
-            self.assertEqual(current["kept"], 3)
+            self.assertEqual(current["kept"], 2)
+            self.assertEqual(current["skipped_short_non_license"], 1)
             self.assertEqual(current["skipped_expired"], 1)
-            self.assertEqual(current["removed_by_deadline"], 1)
+            self.assertEqual(current["removed_by_deadline"], 2)
             titles = {row[0] for row in conn.execute("SELECT title FROM tenders")}
-            self.assertEqual(titles, {"Лицензии JMIX", "Разработка информационной системы", "Разработка интернет-портала"})
-            self.assertEqual(conn.execute("SELECT COUNT(*) FROM user_favorites").fetchone()[0], 1)
+            self.assertEqual(titles, {"Лицензии JMIX", "Разработка интернет-портала"})
+            self.assertEqual(conn.execute("SELECT COUNT(*) FROM user_favorites").fetchone()[0], 0)
             conn.close()
 
 

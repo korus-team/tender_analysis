@@ -16,6 +16,7 @@ from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
 import company_size
+import directions
 import storage
 from icp_config import load_icp
 from scoring import score_tender, score_tender_llm
@@ -61,7 +62,7 @@ def _days_left(deadline: str | None, now: datetime | None = None) -> int | None:
 
 
 def _deadline_disposition(tender: dict, now: datetime) -> str | None:
-    """Возвращает причину удаления только для уже истёкших закупок."""
+    """Причина удаления по сроку или None, если тендер нужно оставить."""
     deadline = tender.get("deadline")
     if not deadline:
         return None
@@ -71,6 +72,8 @@ def _deadline_disposition(tender: dict, now: datetime) -> str | None:
         return None
     if remaining.total_seconds() < 0:
         return "expired"
+    if remaining.days <= 3 and directions.classify(tender) != "license":
+        return "short_non_license"
     return None
 
 
@@ -304,6 +307,7 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
     kept: list[dict] = []
     skipped_small = 0
     skipped_expired = 0
+    skipped_short = 0
     purge_ids: set[str] = set()
     found = len(parsed["items"])
     processed = 0
@@ -340,6 +344,12 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
             disposition = _deadline_disposition(item, now)
             if disposition == "expired":
                 skipped_expired += 1
+                purge_ids.add(item["tender_id"])
+                processed += 1
+                report_progress()
+                continue
+            if disposition == "short_non_license":
+                skipped_short += 1
                 purge_ids.add(item["tender_id"])
                 processed += 1
                 report_progress()
@@ -385,6 +395,7 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
             "skipped_blank": parsed["skipped_blank"],
             "skipped_small_company": skipped_small,
             "skipped_expired": skipped_expired,
+            "skipped_short_non_license": skipped_short,
             "removed_by_deadline": removed,
             "kept": len(kept),
             "new": len(saved.get("new", [])),
