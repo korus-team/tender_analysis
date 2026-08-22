@@ -1153,7 +1153,6 @@ svg{display:block}
 }
 
 /* Иконки в «Почему подходит?» и «Риски» */
-.ilist.ok li.unverified .icon{color:#D98A2B}
 .ilist.ok .icon,
 .ilist.risk .icon{
   color:#000000;
@@ -2487,6 +2486,81 @@ h1.tender-page-title,
   .tender-docs-row{
     grid-template-columns:1fr !important;
   }
+}
+</style>
+
+
+<style>
+/* =================== LAW INLINE + REMOVE DESCRIPTION =================== */
+.meta-row{
+  display:grid !important;
+  grid-template-columns:repeat(4,minmax(0,1fr)) !important;
+  gap:28px !important;
+  align-items:start !important;
+  margin:26px 0 24px !important;
+}
+.meta-row.meta-row--with-law{
+  grid-template-columns:repeat(5,minmax(0,1fr)) !important;
+}
+.meta-row .meta-item{
+  min-width:0;
+}
+.meta-row .ttag-law{
+  display:inline-flex;
+  width:max-content;
+  align-items:center;
+}
+
+/* После удаления описания "Почему подходит?" остается слева, "Риски" справа */
+.tender-left-stack{
+  align-self:start;
+}
+
+@media(max-width:1150px){
+  .meta-row,
+  .meta-row.meta-row--with-law{
+    grid-template-columns:repeat(2,minmax(0,1fr)) !important;
+  }
+}
+@media(max-width:720px){
+  .meta-row,
+  .meta-row.meta-row--with-law{
+    grid-template-columns:1fr !important;
+  }
+}
+</style>
+
+
+<style>
+/* =================== LAW INLINE SMALL ADJUSTMENT =================== */
+
+/* Закон/ФЗ — без заливки, просто текст */
+.meta-row .ttag-law{
+  background:transparent !important;
+  color:#000000 !important;
+  padding:0 !important;
+  border-radius:0 !important;
+}
+
+/* Если закон есть: заказчик чуть шире остальных колонок */
+.meta-row.meta-row--with-law{
+  grid-template-columns:
+    minmax(0,1.45fr)
+    minmax(0,1fr)
+    minmax(0,1.1fr)
+    minmax(0,1fr)
+    minmax(0,.75fr) !important;
+}
+</style>
+
+
+<style>
+/* =================== FZ FONT SIZE FIX =================== */
+/* ФЗ/закон — тот же размер шрифта, что у значений Заказчик и Стоимость */
+.meta-row .ttag-law{
+  font-size: inherit !important;
+  font-weight: inherit !important;
+  line-height: inherit !important;
 }
 </style>
 

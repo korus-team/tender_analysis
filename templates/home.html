@@ -8,7 +8,6 @@
       <label class="btn-label" for="konturFile"><svg class="icon"><use href="#i-plus"/></svg>Загрузить Excel</label>
       <input id="konturFile" type="file" name="kontur_file" accept=".xlsx" hidden>
     </form>
-    <form method="post" action="{{ url_for('ingest') }}"><button class="btn-collect" type="submit"><svg class="icon"><use href="#i-search"/></svg>Собрать тендеры</button></form>
     {% include "_notif.html" %}
   </div>
 </div>
@@ -68,7 +67,7 @@
 
 {% if tenders %}
 {% for t in tenders %}
-<div class="tcard{% if taken_by.get(t.tender_id) %} tcard--taken{% endif %}">
+<div class="tcard">
   <div class="tcard-main">
     <div class="ttags">
       {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
@@ -89,7 +88,7 @@
       {% if t.deadline_reminder %}<b class="soon">{{ t.time_left_fmt }}</b>{% endif %}
     </div>
   </div>
-  <form class="favorite-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
+  <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
     <button class="tcard-heart {{ 'on' if t.tender_id in my_fav_ids }}" type="submit" aria-label="В избранное"><svg class="icon"><use href="#i-heart"/></svg></button>
   </form>
 </div>
@@ -102,7 +101,7 @@
 </div>
 {% endif %}
 {% else %}
-<div class="empty">Ничего не найдено. Нажмите «Собрать тендеры» или измените фильтры.</div>
+<div class="empty">Ничего не найдено. Измените фильтры.</div>
 {% endif %}
 
 <script>
