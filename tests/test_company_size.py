@@ -132,6 +132,36 @@ class CompanyRevenueTests(unittest.TestCase):
         self.assertEqual(found.source, "fns-gir-bo-name")
         self.assertFalse(mismatch.is_confirmed)
 
+    def test_name_lookup_cannot_confirm_a_different_inn(self):
+        class Client:
+            def lookup(self, inn, company_name=None):
+                return company_size.RevenueCheck(
+                    inn, None, None, company_name, "fns-gir-bo", "not_found",
+                )
+
+            def lookup_by_name(self, company_name=None):
+                return company_size.RevenueCheck(
+                    "2310031475", 3_050_026_081_000, 2025, "АО ТАНДЕР",
+                    "fns-gir-bo-name", "found",
+                )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            conn = storage.connect(str(Path(tmp) / "test.db"))
+            verified_path = Path(tmp) / "verified.csv"
+            result = company_size.check_revenue_by_inn(
+                conn, "7707083893", "АО ТАНДЕР", client=Client(),
+                name_registry_path=Path(tmp) / "names.txt",
+                verified_registry_path=verified_path,
+            )
+
+            self.assertFalse(result.passes)
+            self.assertFalse(result.is_confirmed)
+            self.assertEqual(result.inn, "7707083893")
+            self.assertEqual(result.status, "inn_mismatch")
+            self.assertIsNone(result.revenue_rub)
+            self.assertFalse(verified_path.exists())
+            conn.close()
+
 
 if __name__ == "__main__":
     unittest.main()
