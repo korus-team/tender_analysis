@@ -6,149 +6,15 @@
     <div><h1>Настройки</h1></div>
     <div class="topbar-right">
       <button class="settings-save" type="button" id="settingsSaveBtn">Сохранить изменения</button>
-      {% include "_notif.html" %}
     </div>
   </div>
 
   <div class="settings-tabs">
-    <button class="settings-tab on" type="button" data-settings-tab="notifications">Уведомления</button>
-    <button class="settings-tab" type="button" data-settings-tab="profile">Профиль</button>
+    <button class="settings-tab on" type="button" data-settings-tab="profile">Профиль</button>
   </div>
 
-  <!-- ==================== УВЕДОМЛЕНИЯ ==================== -->
-  <section class="settings-panel" data-settings-panel="notifications">
-    <form method="post" action="{{ url_for('settings') }}" id="settingsNotificationsForm">
-      <div class="settings-grid">
-
-        <div class="settings-card pink">
-          <h3>Уведомления</h3>
-          <div class="card-sub">Выберите, какие события и куда мы будем отправлять уведомления.</div>
-
-          <div class="notify-table">
-            <div class="notify-head">
-              <span>Событие</span>
-              <span>На сайте</span>
-              <span>На почту</span>
-            </div>
-
-            <div class="notify-row">
-              <div>
-                <div class="notify-title">Новые подходящие тендеры</div>
-                <div class="notify-desc">Тендеры, которые ИИ считает релевантными</div>
-              </div>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_new_site" {{ 'checked' if s.n_new_site=='1' }}><span class="tr"></span></span></label>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_new_email" {{ 'checked' if s.n_new_email=='1' }}><span class="tr"></span></span></label>
-            </div>
-
-            <div class="notify-row">
-              <div>
-                <div class="notify-title">Изменения в избранных тендерах</div>
-                <div class="notify-desc">Изменение срока, документов или условий</div>
-              </div>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_fav_site" {{ 'checked' if s.n_fav_site=='1' }}><span class="tr"></span></span></label>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_fav_email" {{ 'checked' if s.n_fav_email=='1' }}><span class="tr"></span></span></label>
-            </div>
-
-            <div class="notify-row">
-              <div>
-                <div class="notify-title">Напоминание о сроке подачи</div>
-                <div class="notify-desc">Напомним перед окончанием приема заявок</div>
-              </div>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_remind_site" {{ 'checked' if s.n_remind_site=='1' }}><span class="tr"></span></span></label>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_remind_email" {{ 'checked' if s.n_remind_email=='1' }}><span class="tr"></span></span></label>
-            </div>
-
-            <div class="notify-row">
-              <div>
-                <div class="notify-title">Лицензионные запросы</div>
-                <div class="notify-desc">Новые запросы и обновления по лицензиям</div>
-              </div>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_license_site" {{ 'checked' if s.n_license_site=='1' }}><span class="tr"></span></span></label>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_license_email" {{ 'checked' if s.n_license_email=='1' }}><span class="tr"></span></span></label>
-            </div>
-
-            <div class="notify-row">
-              <div>
-                <div class="notify-title">События по приоритетным компаниям</div>
-                <div class="notify-desc">Тендеры от ваших приоритетных компаний</div>
-              </div>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_priority_site" {{ 'checked' if s.n_priority_site=='1' }}><span class="tr"></span></span></label>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_priority_email" {{ 'checked' if s.n_priority_email=='1' }}><span class="tr"></span></span></label>
-            </div>
-
-            <div class="notify-row">
-              <div>
-                <div class="notify-title">Еженедельная сводка</div>
-                <div class="notify-desc">Краткая подборка лучших предложений за неделю</div>
-              </div>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_weekly_site" {{ 'checked' if s.n_weekly_site=='1' }}><span class="tr"></span></span></label>
-              <label class="notify-toggle"><span class="toggle"><input type="checkbox" name="n_weekly_email" {{ 'checked' if s.n_weekly_email=='1' }}><span class="tr"></span></span></label>
-            </div>
-          </div>
-        </div>
-
-        <div class="settings-right">
-          <div class="settings-card gold">
-            <h3>Расписание</h3>
-
-            <div class="settings-field" style="margin-top:18px">
-              <label>Часовой пояс</label>
-              <select name="timezone">
-                {% for tz in ['Московское время UTC +3','Калининград UTC +2','Самара UTC +4','Екатеринбург UTC +5','Новосибирск UTC +7','Владивосток UTC +10'] %}
-                <option {{ 'selected' if s.timezone==tz }}>{{ tz }}</option>
-                {% endfor %}
-              </select>
-            </div>
-
-            <div class="settings-field">
-              <label>Проверять новые тендеры</label>
-              <div class="settings-two">
-                <select name="check_freq" id="checkFreq" onchange="toggleWins()">
-                  <option value="1" {{ 'selected' if s.check_freq=='1' }}>1 раз в день</option>
-                  <option value="3" {{ 'selected' if s.check_freq=='3' }}>3 раза в день</option>
-                </select>
-                <div class="win-stack">
-                  <select name="check_win1">{% for w in windows %}<option {{ 'selected' if s.check_win1==w }}>{{ w }}</option>{% endfor %}</select>
-                  <select name="check_win2" class="win23">{% for w in windows %}<option {{ 'selected' if s.check_win2==w }}>{{ w }}</option>{% endfor %}</select>
-                  <select name="check_win3" class="win23">{% for w in windows %}<option {{ 'selected' if s.check_win3==w }}>{{ w }}</option>{% endfor %}</select>
-                </div>
-              </div>
-            </div>
-
-            <div class="settings-field">
-              <label>Отправлять уведомления</label>
-              <div class="settings-two">
-                <select name="notify_freq">
-                  <option value="1" {{ 'selected' if s.notify_freq=='1' }}>1 раз в день</option>
-                  <option value="2" {{ 'selected' if s.notify_freq=='2' }}>2 раза в день</option>
-                </select>
-                <select name="notify_win">{% for w in windows %}<option {{ 'selected' if s.notify_win==w }}>{{ w }}</option>{% endfor %}</select>
-              </div>
-            </div>
-          </div>
-
-          <div class="settings-card blue">
-            <h3>Куда отправлять</h3>
-
-            <div class="settings-field" style="margin-top:18px">
-              <label>Электронная почта</label>
-              <div class="settings-email">
-                <input name="email" id="emailInp" value="{{ s.email }}" placeholder="name@korusconsulting.ru">
-                <button type="button" class="email-x" onclick="document.getElementById('emailInp').value=''" aria-label="Очистить"><svg class="icon"><use href="#i-close"/></svg></button>
-              </div>
-              <button class="settings-add-btn" type="button" data-add-contact="email"><span class="plus">＋</span>Добавить дополнительную почту</button>
-            </div>
-
-            <button class="btn-sm" type="submit" formaction="{{ url_for('settings_test_email') }}">Отправить тестовое письмо</button>
-          </div>
-        </div>
-
-      </div>
-    </form>
-  </section>
-
   <!-- ==================== ПРОФИЛЬ ==================== -->
-  <section class="settings-panel" data-settings-panel="profile" hidden>
+  <section class="settings-panel" data-settings-panel="profile">
     <form method="post" action="{{ url_for('settings_account') }}" enctype="multipart/form-data" id="settingsProfileForm">
       <div class="profile-grid">
 
@@ -196,7 +62,7 @@
             </div>
 
             <div class="extra-contacts" id="extraContacts"></div>
-            <input type="hidden" id="extraContactsValue" value="{{ s.extra_contacts }}">
+            <input type="hidden" name="extra_contacts" id="extraContactsValue" value="{{ s.extra_contacts }}">
             <button class="settings-add-btn" type="button" data-add-contact="any"><span class="plus">＋</span>Добавить телефон или почту</button>
           </div>
 
@@ -232,36 +98,10 @@
 </div>
 
 <script>
-function toggleWins(){
-  var f=document.getElementById('checkFreq');
-  if(!f) return;
-  document.querySelectorAll('.win23').forEach(function(el){
-    el.style.display=(f.value==='3'?'block':'none');
-  });
-}
-toggleWins();
-
-var tabs=document.querySelectorAll('[data-settings-tab]');
-var panels=document.querySelectorAll('[data-settings-panel]');
-function openSettingsTab(key){
-  tabs.forEach(function(x){x.classList.toggle('on',x.getAttribute('data-settings-tab')===key);});
-  panels.forEach(function(p){p.hidden=p.getAttribute('data-settings-panel')!==key;});
-}
-tabs.forEach(function(tab){
-  tab.addEventListener('click',function(){
-    var key=this.getAttribute('data-settings-tab');
-    openSettingsTab(key);
-    history.replaceState(null,'','#'+key);
-  });
-});
-if(location.hash==='#profile'){openSettingsTab('profile');}
-
 var saveBtn=document.getElementById('settingsSaveBtn');
 if(saveBtn){
   saveBtn.addEventListener('click',function(){
-    var active=document.querySelector('.settings-panel:not([hidden])');
-    if(!active) return;
-    var form=active.querySelector('form');
+    var form=document.getElementById('settingsProfileForm');
     if(form) form.requestSubmit();
   });
 }
@@ -276,8 +116,8 @@ if(avatarFile){
     var data=new FormData();
     data.append('avatar',this.files[0]);
     try{
-      var page=document.querySelector('.settings-page');
-      var avatarUrl=page?page.dataset.avatarUrl:'';
+      var settingsPage=document.querySelector('.settings-page');
+      var avatarUrl=settingsPage?settingsPage.dataset.avatarUrl:'';
       var response=await fetch(avatarUrl,{method:'POST',body:data,headers:{'X-Requested-With':'fetch'}});
       var result=await response.json();
       if(!response.ok||!result.ok) throw new Error(result.error||'Не удалось загрузить фото');
@@ -305,12 +145,10 @@ function renderExtraContacts(){
   vals.forEach(function(value,index){
     var row=document.createElement('div');
     row.className='extra-contact-row';
-
     var input=document.createElement('input');
     input.type='text';
     input.value=value;
     input.readOnly=true;
-
     var remove=document.createElement('button');
     remove.type='button';
     remove.className='extra-contact-remove';
@@ -322,7 +160,6 @@ function renderExtraContacts(){
       renderExtraContacts();
       saveExtraContacts();
     });
-
     row.appendChild(input);
     row.appendChild(remove);
     box.appendChild(row);
@@ -331,12 +168,13 @@ function renderExtraContacts(){
 
 async function saveExtraContacts(){
   var hidden=document.getElementById('extraContactsValue');
-  var page=document.querySelector('.settings-page');
-  if(!hidden||!page) return;
+  if(!hidden) return;
   var data=new FormData();
   data.append('extra_contacts',hidden.value||'');
   try{
-    await fetch(page.dataset.contactsUrl,{
+    var settingsPage=document.querySelector('.settings-page');
+    var contactsUrl=settingsPage?settingsPage.dataset.contactsUrl:'';
+    await fetch(contactsUrl,{
       method:'POST',
       body:data,
       headers:{'X-Requested-With':'fetch'}

@@ -8,8 +8,6 @@
       <label class="btn-label" for="konturFile"><svg class="icon"><use href="#i-plus"/></svg>Загрузить Excel</label>
       <input id="konturFile" type="file" name="kontur_file" accept=".xlsx" hidden>
     </form>
-    <form method="post" action="{{ url_for('ingest') }}"><button class="btn-collect" type="submit"><svg class="icon"><use href="#i-search"/></svg>Собрать тендеры</button></form>
-    {% include "_notif.html" %}
   </div>
 </div>
 
