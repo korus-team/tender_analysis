@@ -7,6 +7,7 @@ pypdf>=5.0
 openai>=2.0
 pydantic>=2.0
 python-dotenv>=1.0
+gunicorn>=23.0
 
 # Опционально: Anthropic-реализация в llm_classifier.py.
 # anthropic>=0.40
