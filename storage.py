@@ -119,12 +119,25 @@ CREATE TABLE IF NOT EXISTS status_history (
 );
 """
 
+REVENUE_CACHE_SCHEMA = """
+CREATE TABLE IF NOT EXISTS company_revenue_cache (
+    inn          TEXT PRIMARY KEY,
+    company_name TEXT,
+    revenue_rub  INTEGER,
+    report_year  INTEGER,
+    source       TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    checked_at   TEXT NOT NULL
+);
+"""
+
 
 def connect(path: str = DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(path)
     conn.row_factory = sqlite3.Row
     conn.execute(SCHEMA)
     conn.execute(HISTORY_SCHEMA)
+    conn.execute(REVENUE_CACHE_SCHEMA)
     _migrate(conn)
     return conn
 

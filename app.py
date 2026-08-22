@@ -27,6 +27,7 @@ from werkzeug.security import check_password_hash, generate_password_hash
 import storage
 import directions
 import company_size
+import priority_companies
 from main import run_ingest, rescore_all
 from enrich import enrich_pending
 from scoring import theme_score
@@ -284,7 +285,13 @@ def _annotate(tenders):
                               and t["direction"] != "license")
         # коммерческая / государственная (по наличию номера в ЕИС)
         det = t.get("details") if isinstance(t.get("details"), dict) else {}
-        if det and (det.get("eis_number") or det.get("eis_url")):
+        trade_type = str(det.get("trade_type") or "").lower().replace(" ", "")
+        is_government = bool(
+            det.get("eis_number") or det.get("eis_url") or
+            any(marker in trade_type for marker in
+                ("44-фз", "223-фз", "615ппрф", "615-пп"))
+        )
+        if is_government:
             t["ptype"], t["ptype_label"] = "gov", "Госзакупка (ФЗ)"
         elif t.get("enriched_at"):
             t["ptype"], t["ptype_label"] = "com", "Коммерческая"
@@ -296,7 +303,18 @@ def _annotate(tenders):
         # цена / заказчик / риски
         t["price_fmt"] = fmt_price(t.get("price_rub"))
         t["customer"] = _clean_customer(t.get("customer"))
-        t["revenue_h"] = company_size.revenue_human(t.get("customer"))
+        exact_revenue = (det.get("customer_turnover_rub") or
+                         det.get("customer_revenue_rub"))
+        turnover_status = det.get("customer_turnover_status")
+        t["turnover_unverified"] = turnover_status in {
+            "no_data", "not_found", "invalid_inn"
+        }
+        if exact_revenue is not None:
+            t["revenue_h"] = company_size.revenue_human_value(exact_revenue)
+        elif t["turnover_unverified"]:
+            t["revenue_h"] = "Не подтверждён"
+        else:
+            t["revenue_h"] = company_size.revenue_human(t.get("customer"))
         t["risks"] = _risks_from_labels(t.get("labels"), days)
         out.append(t)
     return out
@@ -494,65 +512,32 @@ def _is_relevant_eff(t, rel_map):
 
 
 # --- приоритетные компании (заменяют «профиль компании») ---
-_PRIORITY_SEED = [
-    ("ПАО Сбербанк", "7707083893"), ("ПАО Газпром", "7736050003"),
-    ("ПАО НК Роснефть", "7706107510"), ("ПАО ЛУКОЙЛ", "7708004767"),
-    ("Банк ВТБ (ПАО)", "7702070139"), ("ОАО РЖД", "7708503727"),
-    ("ПАО Ростелеком", "7707049388"), ("ПАО ГМК Норильский никель", "8401005730"),
-    ("ПАО НЛМК", "4823006703"), ("ПАО Северсталь", "3528000597"),
-    ("ПАО ММК", "7414003633"), ("ПАО Татнефть", "1644003838"),
-    ("ПАО Сургутнефтегаз", "8602060555"), ("ПАО Транснефть", "7706061801"),
-    ("ПАО НОВАТЭК", "6316031581"), ("АО Тандер (Магнит)", "2309085638"),
-    ("X5 Retail Group", "7728632689"), ("ПАО МТС", "7740000076"),
-    ("ПАО МегаФон", "7812014560"), ("ПАО ВымпелКом", "7713076301"),
-    ("ПАО Аэрофлот", "7712040126"), ("Газпром нефть", "5504036333"),
-    ("ПАО СИБУР Холдинг", "7727547261"), ("ГК Ростех", "7704274402"),
-    ("ГК Росатом", "7706413348"), ("ПАО Интер РАО", "2320109650"),
-    ("ПАО РусГидро", "2460066195"), ("ПАО Россети", "7728662669"),
-    ("АО Альфа-Банк", "7728168971"), ("Банк ГПБ (АО)", "7744001497"),
-]
-
-
 def _ensure_priorities_table():
     conn = storage.connect()
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS priority_companies ("
-        "id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL, "
-        "inn TEXT, created_at TEXT)")
-    n = conn.execute("SELECT COUNT(*) FROM priority_companies").fetchone()[0]
-    if n == 0:  # предзаполняем крупными компаниями (можно почистить позже)
-        now = datetime.now().isoformat(timespec="seconds")
-        conn.executemany(
-            "INSERT INTO priority_companies (name, inn, created_at) VALUES (?,?,?)",
-            [(nm, inn, now) for nm, inn in _PRIORITY_SEED])
-    conn.commit()
+    priority_companies.ensure_schema(conn)
     conn.close()
 
 
-def _norm_name(s):
-    import re as _re
-    s = (s or "").lower().replace("«", " ").replace("»", " ").replace('"', " ")
-    s = _re.sub(r"\b(пао|оао|ао|зао|ооо|гк|банк|публичное акционерное общество)\b", " ", s)
-    return _re.sub(r"[^\w]+", "", s)
-
-
 def _priority_index(conn):
-    """Возвращает (set нормализованных имён, set ИНН) приоритетных компаний."""
-    names, inns = set(), set()
-    for r in conn.execute("SELECT name, inn FROM priority_companies"):
-        if r["name"]:
-            names.add(_norm_name(r["name"]))
-        if r["inn"]:
-            inns.add(r["inn"].strip())
-    return names, inns
+    """Возвращает набор ИНН приоритетных компаний."""
+    return priority_companies.priority_inns(conn)
 
 
-def _is_priority(customer, pindex):
-    names, _inns = pindex
-    if not customer:
-        return False
-    n = _norm_name(customer)
-    return any(pn and (pn in n or n in pn) for pn in names)
+def _is_priority(tender, pindex):
+    """Приоритетность определяется только точным совпадением нормализованного ИНН."""
+    return priority_companies.is_priority_tender(tender, pindex)
+
+
+def _mark_priority(rows, pindex):
+    for tender in rows:
+        tender["is_priority"] = _is_priority(tender, pindex)
+    return rows
+
+
+def _passes_company_filter(tender):
+    """Госзакупки и приоритетные компании не ограничиваются порогом 10 млрд."""
+    return (tender.get("ptype") == "gov" or tender.get("is_priority") or
+            company_size.passes_revenue(tender.get("customer")))
 
 
 def _ensure_settings_table():
@@ -817,14 +802,13 @@ def home():
 
     rel_map, not_pursued = _load_meta(conn)
     pindex = _priority_index(conn)
-    rows = _annotate(storage.query_tenders(conn, limit=None))
+    rows = _mark_priority(_annotate(storage.query_tenders(conn, limit=None)), pindex)
     rows = [t for t in rows
-            if company_size.passes_revenue(t.get("customer")) and _not_expired(t)
+            if _passes_company_filter(t) and _not_expired(t)
             and _is_relevant_eff(t, rel_map) and t["tender_id"] not in not_pursued]
     conn.close()
 
     for t in rows:
-        t["is_priority"] = _is_priority(t.get("customer"), pindex)
         t["law"] = _law_tag(t)
 
     # счётчики (по всей отобранной выборке, до фильтров)
@@ -900,9 +884,10 @@ def tenders():
     page = request.args.get("page", type=int) or 1
 
     rel_map, not_pursued = _load_meta(conn)
-    rows = _annotate(storage.query_tenders(conn, limit=None))
+    pindex = _priority_index(conn)
+    rows = _mark_priority(_annotate(storage.query_tenders(conn, limit=None)), pindex)
     rows = [t for t in rows
-            if company_size.passes_revenue(t.get("customer")) and _not_expired(t)
+            if _passes_company_filter(t) and _not_expired(t)
             and _is_relevant_eff(t, rel_map) and t["tender_id"] not in not_pursued]
     conn.close()
 
@@ -949,38 +934,21 @@ def priorities():
     conn.close()
     q = (request.args.get("q") or "").strip()
     companies = [dict(r) for r in rows]
-    have = {(_norm_name(c["name"])) for c in companies}
-    suggestions = [{"name": nm, "inn": inn} for nm, inn in _PRIORITY_SEED
-                   if _norm_name(nm) not in have][:6]
     if q:
         ql = q.lower()
         companies = [c for c in companies
                      if ql in (c["name"] or "").lower() or ql in (c["inn"] or "")]
     return render_template("priorities.html", active="priorities", companies=companies,
-                           q=q, suggestions=suggestions)
-
-
-@app.route("/priorities/add", methods=["POST"])
-def priorities_add():
-    name = (request.form.get("name") or "").strip()
-    inn = (request.form.get("inn") or "").strip()
-    if name or inn:
-        conn = storage.connect()
-        conn.execute("INSERT INTO priority_companies (name, inn, created_at) VALUES (?,?,?)",
-                     (name or ("ИНН " + inn), inn or None,
-                      datetime.now().isoformat(timespec="seconds")))
-        conn.commit()
-        conn.close()
-        flash("Компания добавлена в приоритетные")
-    return redirect(url_for("priorities"))
+                           q=q)
 
 
 @app.route("/priorities/<int:cid>/delete", methods=["POST"])
 def priorities_delete(cid):
     conn = storage.connect()
-    conn.execute("DELETE FROM priority_companies WHERE id = ?", (cid,))
+    deleted = conn.execute("DELETE FROM priority_companies WHERE id = ?", (cid,)).rowcount
     conn.commit()
     conn.close()
+    flash("Компания удалена из приоритетных" if deleted else "Компания уже удалена")
     return redirect(url_for("priorities"))
 
 
@@ -996,40 +964,31 @@ def priorities_clear():
 
 @app.route("/priorities/import", methods=["POST"])
 def priorities_import():
-    """Импорт из Excel (.xlsx): колонки «Название» и «ИНН» (или наоборот)."""
+    """Импорт из Excel: автоматически находит колонки названия и ИНН."""
     f = request.files.get("file")
     if not f or not f.filename:
         flash("Файл не выбран", "err")
         return redirect(url_for("priorities"))
+    if not f.filename.lower().endswith(".xlsx"):
+        flash("Поддерживаются только Excel-файлы в формате .xlsx", "err")
+        return redirect(url_for("priorities"))
+    conn = None
     try:
-        import openpyxl
-        wb = openpyxl.load_workbook(f, read_only=True, data_only=True)
-        ws = wb.active
         conn = storage.connect()
-        now = datetime.now().isoformat(timespec="seconds")
-        added = 0
-        for row in ws.iter_rows(values_only=True):
-            if not row:
-                continue
-            cells = [str(c).strip() for c in row if c not in (None, "")]
-            if not cells:
-                continue
-            # ИНН — это набор из 10/12 цифр; остальное — название
-            inn = next((c for c in cells if c.isdigit() and len(c) in (10, 12)), None)
-            name = next((c for c in cells if c != inn), None) or (("ИНН " + inn) if inn else None)
-            if (name and name.lower() in ("название", "наименование", "компания")):
-                continue  # заголовок
-            if name or inn:
-                conn.execute("INSERT INTO priority_companies (name, inn, created_at) VALUES (?,?,?)",
-                             (name, inn, now))
-                added += 1
-        conn.commit()
-        conn.close()
-        flash(f"Импортировано компаний: {added}")
-    except ImportError:
-        flash("Для импорта из Excel нужна библиотека openpyxl (pip install openpyxl)", "err")
-    except Exception as e:  # noqa: BLE001
-        flash(f"Не удалось разобрать файл: {e}", "err")
+        summary = priority_companies.import_xlsx(f, conn)
+        message = f"Добавлено компаний: {summary['added']}"
+        if summary["duplicates"]:
+            message += f"; уже были в списке: {summary['duplicates']}"
+        if summary["invalid"]:
+            message += f"; пропущено строк без корректного названия или ИНН: {summary['invalid']}"
+        flash(message)
+    except priority_companies.PriorityCompanyImportError as exc:
+        flash(str(exc), "err")
+    except Exception as exc:  # noqa: BLE001
+        flash(f"Не удалось импортировать компании: {exc}", "err")
+    finally:
+        if conn is not None:
+            conn.close()
     return redirect(url_for("priorities"))
 
 
@@ -1040,9 +999,10 @@ def irrelevant():
     q = (request.args.get("q") or "").strip()
     page = request.args.get("page", type=int) or 1
     rel_map, not_pursued = _load_meta(conn)
-    rows = _annotate(storage.query_tenders(conn, limit=None))
+    pindex = _priority_index(conn)
+    rows = _mark_priority(_annotate(storage.query_tenders(conn, limit=None)), pindex)
     rows = [t for t in rows
-            if company_size.passes_revenue(t.get("customer")) and _not_expired(t)
+            if _passes_company_filter(t) and _not_expired(t)
             and (not _is_relevant_eff(t, rel_map) or t["tender_id"] in not_pursued)]
     conn.close()
     for t in rows:
@@ -1071,8 +1031,10 @@ def tender(tender_id):
     row = conn.execute("SELECT relevance, not_pursued FROM tender_meta WHERE tender_id = ?",
                        (tender_id,)).fetchone()
     doc_analysis = _document_analysis(conn, tender_id)
+    pindex = _priority_index(conn)
     conn.close()
     t = _annotate([t])[0]
+    t["is_priority"] = _is_priority(t, pindex)
     t["document_analysis"] = doc_analysis
     override = row["relevance"] if row else None
     not_pursued = bool(row["not_pursued"]) if row else False
@@ -1159,8 +1121,9 @@ def favorites():
         tt = storage.get_tender(conn, tid)
         if tt:
             raw.append(tt)
+    pindex = _priority_index(conn)
     conn.close()
-    rows = _annotate(raw)
+    rows = _mark_priority(_annotate(raw), pindex)
     for t in rows:
         t["savers"] = saves.get(t["tender_id"], [])
         t["stage"] = stages.get(t["tender_id"])
@@ -1181,11 +1144,12 @@ def analytics():
     conn = storage.connect()
     rel_map, not_pursued = _load_meta(conn)
     stages = _load_stages(conn)
-    all_rows = _annotate(storage.query_tenders(conn, limit=None))
+    pindex = _priority_index(conn)
+    all_rows = _mark_priority(_annotate(storage.query_tenders(conn, limit=None)), pindex)
     conn.close()
 
     pool = [r for r in all_rows
-            if company_size.passes_revenue(r.get("customer")) and _not_expired(r)]
+            if _passes_company_filter(r) and _not_expired(r)]
     relevant_rows = [r for r in pool if _is_relevant_eff(r, rel_map)]
     irrelevant_rows = [r for r in pool if not _is_relevant_eff(r, rel_map)]
     relevant = len(relevant_rows)
