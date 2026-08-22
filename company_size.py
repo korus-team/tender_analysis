@@ -469,7 +469,11 @@ def check_revenue_by_inn(conn, inn: str | None, company_name: str | None = None,
         if local is not None:
             return local
         raise
-    if name_result.is_confirmed:
+    name_result_inn = normalize_inn(name_result.inn)
+    name_inn_mismatch = bool(
+        normalized and name_result_inn and name_result_inn != normalized
+    )
+    if name_result.is_confirmed and not name_inn_mismatch:
         result = RevenueCheck(
             normalized or name_result.inn,
             name_result.revenue_rub,
@@ -484,6 +488,10 @@ def check_revenue_by_inn(conn, inn: str | None, company_name: str | None = None,
         return result
 
     if local is not None:
+        local_inn = normalize_inn(local.inn)
+        if normalized and local_inn and local_inn != normalized:
+            local = None
+    if local is not None:
         if normalized and local.inn != normalized:
             local = RevenueCheck(
                 normalized, local.revenue_rub, local.report_year,
@@ -494,8 +502,11 @@ def check_revenue_by_inn(conn, inn: str | None, company_name: str | None = None,
             _save_cached_revenue(conn, local, now)
         return local
 
-    status = (name_result.status if name_result.status not in {"invalid_name"}
-              else (exact_result.status if exact_result else "invalid_inn"))
+    if name_inn_mismatch:
+        status = "inn_mismatch"
+    else:
+        status = (name_result.status if name_result.status not in {"invalid_name"}
+                  else (exact_result.status if exact_result else "invalid_inn"))
     result = RevenueCheck(
         normalized, None, None, company_name, "unverified", status,
     )
