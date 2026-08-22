@@ -45,7 +45,7 @@
   </div>
   <div class="meta-item">
     <div class="ml">Тип закупки</div>
-    <div class="mv">{% if t.ptype=='gov' %}Государственный{% elif t.ptype=='com' %}Коммерческий{% else %}{{ t.direction_name }}{% endif %}</div>
+    <div class="mv meta-type-value">{% if t.ptype=='gov' %}<span class="type-full">Государственный</span><span class="type-mobile">Гос.</span>{% elif t.ptype=='com' %}<span class="type-full">Коммерческий</span><span class="type-mobile">Коммерц.</span>{% else %}{{ t.direction_name }}{% endif %}</div>
   </div>
   {% if t.law %}
   <div class="meta-item">
@@ -135,10 +135,10 @@
   </div>
 </div>
 
-<div class="card" style="margin-top:20px">
+<div class="card tender-status-card" style="margin-top:20px">
   <h3>Оценка и статус</h3>
   <div class="hint" style="margin-bottom:12px">Если система ошиблась с профилем — поправьте (это улучшит подбор). «Не пошли» — если решили не участвовать.</div>
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  <div class="tender-status-actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span style="color:var(--text-2);font-size:14px">Сейчас: <b>{{ 'профильный' if eff_rel else 'нерелевантный' }}</b>{% if override %} (вручную){% else %} (авто){% endif %}</span>
     {% if eff_rel %}
       <form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}"><input type="hidden" name="value" value="irrelevant"><button class="btn-ghost" type="submit">Не наш профиль</button></form>

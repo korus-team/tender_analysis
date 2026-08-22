@@ -2,16 +2,12 @@
 {% block content %}
 <div class="topbar">
   <div class="tb-head"><div><h1>Приоритетные компании</h1><div class="sub">Тендеры этих компаний подсвечиваются в поиске</div></div></div>
-  <div class="topbar-right">{% include "_notif.html" %}</div>
 </div>
 
 <div class="prio-wrap">
   <div class="prio-left">
     <div class="search-row">
-      <form class="prio-search" method="get" action="{{ url_for('priorities') }}">
-        <div class="search-box"><svg class="icon"><use href="#i-search"/></svg><input name="q" value="{{ q }}" placeholder="Поиск по ИНН или названию..."></div>
-        <button class="btn-filter" type="submit">Найти</button>
-      </form>
+      <form class="search-box" method="get" action="{{ url_for('priorities') }}" style="flex:1"><svg class="icon"><use href="#i-search"/></svg><input name="q" value="{{ q }}" placeholder="Поиск по ИНН или названию..."></form>
       <form method="post" action="{{ url_for('priorities_clear') }}" onsubmit="return confirm('Очистить весь список приоритетных компаний?')"><button class="btn-filter" type="submit">Очистить все</button></form>
     </div>
     {% if companies %}
@@ -19,29 +15,36 @@
     <div class="prio-row">
       <div class="prio-idx">{{ loop.index }}</div>
       <div class="prio-info"><div class="prio-name">{{ c.name }}</div>{% if c.inn %}<div class="prio-inn">ИНН {{ c.inn }}</div>{% endif %}</div>
-      <form method="post" action="{{ url_for('priorities_delete', cid=c.id) }}" onsubmit="return confirm('Удалить компанию из приоритетных?')"><button class="prio-del" type="submit" aria-label="Удалить"><svg class="icon"><use href="#i-close"/></svg></button></form>
+      <form method="post" action="{{ url_for('priorities_delete', cid=c.id) }}"><button class="prio-del" type="submit" aria-label="Удалить"><svg class="icon"><use href="#i-close"/></svg></button></form>
     </div>
     {% endfor %}
     {% else %}
-    <div class="empty">{% if q %}По запросу ничего не найдено.{% else %}Список пуст. Загрузите Excel-файл с названиями и ИНН компаний.{% endif %}</div>
+    <div class="empty">Список пуст. Добавьте компании справа.</div>
     {% endif %}
   </div>
 
   <div class="prio-add">
     <div class="prio-add-head">
-      <div class="prio-add-title">Добавить компании</div>
+      <div class="prio-add-title">Добавить компанию</div>
     </div>
-    <form method="post" action="{{ url_for('priorities_import') }}" enctype="multipart/form-data" class="prio-excel-form">
-      <label class="prio-excel"><input type="file" name="file" accept=".xlsx" hidden onchange="this.form.submit()"><svg class="icon"><use href="#i-plus"/></svg>Загрузить Excel</label>
+    <div class="prio-add-form">
+      <form method="post" action="/priorities/add" style="min-width:0"><input class="prio-input" name="name" placeholder="По ИНН или названию..."></form>
+      <form method="post" action="{{ url_for('priorities_import') }}" enctype="multipart/form-data" style="width:100%"><label class="prio-excel mobile-excel-tall" style="display:grid;place-items:center"><input type="file" name="file" accept=".xlsx,.xls" hidden onchange="this.form.submit()">из Excel</label></form>
+    </div>
+
+    {% for sg in suggestions %}
+    <form method="post" action="/priorities/add" class="prio-sugg">
+      <input type="hidden" name="name" value="{{ sg.name }}"><input type="hidden" name="inn" value="{{ sg.inn }}">
+      <div class="prio-sugg-info"><div class="prio-sugg-name">{{ sg.name }}</div><div class="prio-sugg-inn">ИНН {{ sg.inn }}</div></div>
+      <button class="prio-sugg-add" type="submit" aria-label="Добавить"><svg class="icon"><use href="#i-plus"/></svg></button>
     </form>
-    <div class="prio-hint">В файле должны быть колонки «Название» и «ИНН». Они могут находиться в любом порядке среди других колонок — система найдёт их автоматически.</div>
+    {% endfor %}
+    <div class="prio-hint">Excel: колонки «Название» и «ИНН», по одной компании в строке.</div>
   </div>
 </div>
 
 <style>
 .prio-wrap{display:grid;grid-template-columns:1fr 340px;gap:22px;align-items:start}
-.prio-search{display:flex;gap:10px;flex:1;min-width:0}
-.prio-search .search-box{min-width:0}
 .prio-row{display:flex;align-items:center;gap:16px;background:#fff;border:1px solid var(--border-2);border-radius:16px;padding:16px 20px;margin-bottom:12px}
 .prio-idx{width:46px;height:46px;border-radius:50%;background:#FFEAAC;color:#000000;font-weight:800;font-size:17px;display:grid;place-items:center;flex-shrink:0}
 .prio-info{flex:1;min-width:0}
@@ -50,13 +53,50 @@
 .prio-del{width:30px;height:30px;border-radius:50%;border:none;background:#1C1C1E;color:#fff;cursor:pointer;display:grid;place-items:center}
 .prio-del:hover{background:#000}
 .prio-del .icon{width:17px;height:17px}
+/* тёмная панель добавления */
 .prio-add{background:#2B2E34;border-radius:20px;padding:20px;position:sticky;top:20px}
 .prio-add-title{color:#fff;font-weight:700;font-size:17px;margin-bottom:14px}
-.prio-excel{width:100%;height:52px;background:#FFEAAC;color:#000;border:1px solid #FFEAAC;border-radius:12px;padding:0 16px;font-family:inherit;font-weight:700;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
-.prio-excel:hover{background:#F5D978}
-.prio-excel .icon{width:18px;height:18px}
-.prio-excel-form{margin:0}
+.prio-add-form{display:grid;grid-template-columns:minmax(0,1fr) 110px;gap:8px;margin-bottom:12px;align-items:stretch}
+.prio-input{width:100%;height:46px;border:1px solid #55585F;background:#3A3D44;color:#fff;border-radius:11px;padding:11px 13px;font-family:inherit;font-size:14px}
+.prio-input::placeholder{color:#9198A0}
+.prio-excel{width:100%;height:46px;background:#3A3D44;color:#9198A0;border:1px solid #55585F;border-radius:11px;padding:0 12px;font-family:inherit;font-weight:500;font-size:14px;cursor:pointer;white-space:nowrap}
+.prio-excel-form{margin-bottom:16px}
+.prio-file{display:block;border:1px dashed #55585F;border-radius:11px;padding:10px;text-align:center;color:#C7CBD1;font-size:14px;cursor:pointer}
+.prio-file:hover{background:#33363C}
+.prio-sugg{display:flex;align-items:center;gap:12px;background:#34373D;border:1px solid #55585F;border-radius:14px;padding:13px 15px;margin-bottom:10px}
+.prio-sugg-info{flex:1;min-width:0}
+.prio-sugg-name{color:#fff;font-weight:600;font-size:14.5px}
+.prio-sugg-inn{color:#9198A0;font-size:12.5px;margin-top:2px}
+.prio-sugg-add{width:38px;height:38px;border-radius:50%;background:#FFEAAC;color:#000000;border:none;cursor:pointer;display:grid;place-items:center;flex-shrink:0}
+.prio-sugg-add .icon{width:20px;height:20px}
 .prio-hint{color:#9198A0;font-size:12px;margin-top:12px}
-@media (max-width:900px){.prio-wrap{grid-template-columns:1fr}.search-row{align-items:stretch;flex-direction:column}.prio-search{width:100%}}
+@media (max-width:900px){.prio-wrap{grid-template-columns:1fr}}
 </style>
+
+<style>
+/* =================== PRIORITIES MOBILE FIX =================== */
+@media(max-width:768px){
+  .prio-add-form{
+    grid-template-columns:1fr !important;
+    gap:10px !important;
+  }
+  .prio-add-form > form{
+    width:100% !important;
+    min-height:48px !important;
+  }
+  .prio-excel,
+  .mobile-excel-tall{
+    width:100% !important;
+    height:48px !important;
+    min-height:48px !important;
+    padding:0 16px !important;
+    display:flex !important;
+    align-items:center !important;
+    justify-content:center !important;
+    font-size:16px !important;
+    line-height:1 !important;
+  }
+}
+</style>
+
 {% endblock %}
