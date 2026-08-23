@@ -3,7 +3,7 @@
 <div class="topbar">
   <div class="tb-head"><div><h1>Избранное</h1><div class="sub">Сохранённые тендеры для быстрого поиска</div></div></div>
   <div class="topbar-right">
-    <div class="search"><form method="get" action="{{ url_for('home') }}"><button type="submit" class="search-btn" aria-label="Искать"><svg class="icon"><use href="#i-search"/></svg></button><input name="q" placeholder="Поиск тендеров..."></form></div>
+    <div class="search"><form method="get" action="{{ url_for('home') }}"><button type="submit" class="search-btn" aria-label="Искать"><svg class="icon"><use href="#i-search"/></svg></button><input name="q" placeholder="Поиск" data-mobile-placeholder="Поиск" data-desktop-placeholder="Поиск"></form></div>
     {% include "_notif.html" %}
   </div>
 </div>
@@ -23,13 +23,11 @@
 
 {% if tenders %}
 {% for t in tenders %}
-<div class="tcard{% if taken_by.get(t.tender_id) %} tcard--taken{% endif %}">
+<div class="tcard{% if current_user and current_user.username in t.savers %} tcard--taken{% endif %}">
   <div class="tcard-main">
     <div class="ttags">
-      {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
       {% if t.stage %}<span class="ttag ttag-{{ t.stage }}">{{ t.stage_label }}</span>{% endif %}
       {% for s in t.savers %}<span class="ttag ttag-metka">{{ s }}</span>{% endfor %}
-      {% if t.law %}<span class="ttag ttag-law">{{ t.law }}</span>{% endif %}
       {% if t.expired %}<span class="ttag ttag-expired">Срок подачи прошёл</span>{% endif %}
     </div>
     <div class="tcard-title"><a href="{{ url_for('tender', tender_id=t.tender_id, ret='/favorites') }}">{{ t.title }}</a></div>
@@ -42,13 +40,16 @@
           {% for k, lbl in stage_labels.items() %}<option value="{{ k }}" {{ 'selected' if t.stage==k }}>{{ lbl }}</option>{% endfor %}
         </select>
       </form>
+      <form class="fav-mobile-heart" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
+        <button class="tcard-heart on" type="submit" aria-label="Убрать из избранного"><svg class="icon"><use href="#i-heart"/></svg></button>
+      </form>
     </div>
   </div>
   <div class="tcard-right">
     <div class="tcard-price">{{ t.price_fmt }}</div>
     <div class="tcard-deadline">{% if t.expired %}<span>Размещение завершено</span>{% elif t.deadline_date_fmt != '—' %}<span>Подача заявок<br>до {{ t.deadline_date_fmt }}<br>{{ t.deadline_time_fmt }}</span>{% if t.deadline_reminder %}<b class="soon">{{ t.time_left_fmt }}</b>{% endif %}{% else %}<span>Срок подачи<br>не указан</span>{% endif %}</div>
   </div>
-  <form class="favorite-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
+  <form class="fav-desktop-heart" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
     <button class="tcard-heart on" type="submit" aria-label="Убрать из избранного"><svg class="icon"><use href="#i-heart"/></svg></button>
   </form>
 </div>
@@ -56,4 +57,60 @@
 {% else %}
 <div class="empty">В избранном пока пусто. Нажимайте сердечко у нужных тендеров в «Поиске».</div>
 {% endif %}
+<script>
+(function(){
+  var input=document.querySelector('input[data-mobile-placeholder]');
+  if(!input) return;
+  function syncFavPlaceholder(){
+    input.placeholder=window.innerWidth<=768 ? input.dataset.mobilePlaceholder : input.dataset.desktopPlaceholder;
+  }
+  syncFavPlaceholder();
+  window.addEventListener('resize',syncFavPlaceholder);
+})();
+</script>
+
+<style>
+/* =================== FAVORITES MOBILE FIX =================== */
+.fav-mobile-heart{display:none}
+@media(max-width:768px){
+  /* Фиолетовая полоса слева, если тендер сохранён текущим пользователем */
+  .tcard.tcard--taken{
+    position:relative !important;
+    overflow:hidden !important;
+    padding-left:46px !important;
+  }
+  .tcard.tcard--taken::before{
+    content:"" !important;
+    position:absolute !important;
+    left:0 !important;
+    top:0 !important;
+    bottom:0 !important;
+    width:24px !important;
+    background:#DABDFF !important;
+  }
+
+  /* Этап и сердце — строго одна горизонтальная строка */
+  .tcard-main > .ttags[style*="margin-top"]{
+    display:flex !important;
+    align-items:center !important;
+    gap:12px !important;
+    flex-wrap:nowrap !important;
+  }
+  .tcard-main > .ttags[style*="margin-top"] > form{
+    margin:0 !important;
+  }
+  .fav-mobile-heart{
+    display:block !important;
+    flex:0 0 auto !important;
+  }
+  .fav-desktop-heart{
+    display:none !important;
+  }
+  .fav-mobile-heart .tcard-heart{
+    width:44px !important;
+    height:44px !important;
+  }
+}
+</style>
+
 {% endblock %}

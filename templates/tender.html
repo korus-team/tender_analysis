@@ -14,7 +14,6 @@
   {% else %}
     <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-label" type="submit"><svg class="icon"><use href="#i-plus"/></svg>Добавить метку</button></form>
   {% endif %}
-  {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
   {% if taken_by.get(t.tender_id) %}<span class="ttag ttag-taken">Взято: {{ taken_by[t.tender_id] }}</span>{% endif %}
   <form class="favorite-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}" style="margin-left:auto">
     <button class="tcard-heart {{ 'on' if t.tender_id in my_fav_ids }}" type="submit" aria-label="В избранное"><svg class="icon"><use href="#i-heart"/></svg></button>
@@ -31,7 +30,7 @@
   </div>
 </div>
 
-<div class="meta-row">
+<div class="meta-row{% if t.law %} meta-row--with-law{% endif %}">
   <div class="meta-item">
     <div class="ml">Заказчик</div>
     <div class="mv">{{ t.customer or 'Скрыт площадкой' }}</div>
@@ -46,7 +45,7 @@
   </div>
   <div class="meta-item">
     <div class="ml">Тип закупки</div>
-    <div class="mv">{% if t.ptype=='gov' %}Государственный{% elif t.ptype=='com' %}Коммерческий{% else %}{{ t.direction_name }}{% endif %}</div>
+    <div class="mv meta-type-value">{% if t.ptype=='gov' %}<span class="type-full">Государственный</span><span class="type-mobile">Гос.</span>{% elif t.ptype=='com' %}<span class="type-full">Коммерческий</span><span class="type-mobile">Коммерц.</span>{% else %}{{ t.direction_name }}{% endif %}</div>
   </div>
   {% if t.law %}
   <div class="meta-item">
@@ -58,15 +57,10 @@
 
 <div class="tender-content-grid">
   <div class="tender-left-stack">
-    <div class="ibox b-desc">
-    <h3>Описание проекта</h3>
-    <p>{{ t.subject or 'Описание не указано на площадке. Полный текст обычно лежит в файле «Описание объекта закупки» — см. документы ниже.' }}</p>
-  </div>
-
-    <div class="ibox b-why">
+<div class="ibox b-why">
       <h3>Почему подходит?</h3>
       {% if t.reasons %}
-      <ul class="ilist ok">{% for r in t.reasons %}<li{% if loop.first and t.turnover_unverified %} class="unverified"{% endif %}><svg class="icon"><use href="{% if loop.first and t.turnover_unverified %}#i-warn{% else %}#i-check{% endif %}"/></svg>{{ r }}</li>{% endfor %}</ul>
+      <ul class="ilist ok">{% for r in t.reasons %}<li><svg class="icon"><use href="#i-check"/></svg>{{ r }}</li>{% endfor %}</ul>
       {% else %}<p>Факторы оценки не сохранены.</p>{% endif %}
       {% if t.document_analysis and t.document_analysis.recommendations %}
       <button class="btn-sm teal analysis-open-btn" type="button" onclick="openTenderModal('recommendationsModal')">Посмотреть рекомендации</button>
@@ -141,10 +135,10 @@
   </div>
 </div>
 
-<div class="card" style="margin-top:20px">
+<div class="card tender-status-card" style="margin-top:20px">
   <h3>Оценка и статус</h3>
   <div class="hint" style="margin-bottom:12px">Если система ошиблась с профилем — поправьте (это улучшит подбор). «Не пошли» — если решили не участвовать.</div>
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  <div class="tender-status-actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span style="color:var(--text-2);font-size:14px">Сейчас: <b>{{ 'профильный' if eff_rel else 'нерелевантный' }}</b>{% if override %} (вручную){% else %} (авто){% endif %}</span>
     {% if eff_rel %}
       <form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}"><input type="hidden" name="value" value="irrelevant"><button class="btn-ghost" type="submit">Не наш профиль</button></form>
