@@ -637,14 +637,14 @@ svg{display:block}
 .analysis-check{display:flex;align-items:flex-start;gap:9px;margin:16px 0;color:var(--text);font-size:14px;line-height:1.4;cursor:pointer}.analysis-check input{margin-top:3px;accent-color:var(--teal)}
 .tender-modal__actions{display:flex;gap:10px;flex-wrap:wrap}.recommendations-list{padding-left:20px;display:flex;flex-direction:column;gap:13px;font-size:14.5px;line-height:1.45;margin:16px 0 22px}.recommendations-list li::marker{color:var(--teal);font-weight:700}.recommendation-source{display:block;width:max-content;max-width:100%;margin-top:5px;color:var(--teal);font-size:12.5px;text-decoration:none;overflow-wrap:anywhere}.recommendation-source:hover{text-decoration:underline}.recommendation-source.muted{color:var(--text-3)}
 .analysis-loading{position:fixed;z-index:1200;inset:0;display:grid;place-items:center;padding:20px;background:rgba(26,22,42,.20);backdrop-filter:blur(3px)}.analysis-loading[hidden]{display:none}.analysis-loading__card{width:min(100%,420px);padding:32px 28px;text-align:center;background:#fff;border:2px solid #DABDFF;border-radius:18px;box-shadow:0 18px 55px rgba(38,24,71,.16)}.analysis-loading__card h2{margin:17px 0 9px;font-size:20px}.analysis-loading__card p{margin:0;color:var(--text-2);font-size:14px;line-height:1.5}.analysis-loading__spinner{display:block;width:42px;height:42px;margin:auto;border:4px solid #F1E5FF;border-top-color:#DABDFF;border-radius:50%;animation:analysis-spin .8s linear infinite}@keyframes analysis-spin{to{transform:rotate(360deg)}}.analysis-in-progress{overflow:hidden}
-.mail-form{margin-top:16px;display:flex;gap:12px;align-items:flex-start}
-.mail-send{flex-shrink:0;width:74px;height:74px;border-radius:12px;border:1px solid var(--border-2);background:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;cursor:pointer;color:var(--text-2);font-size:12px}
-.mail-send .icon{width:22px;height:22px}
-.mail-fields{flex:1;display:flex;flex-direction:column;gap:8px}
-.mail-fields input,.mail-fields textarea{border:1px solid var(--border-2);border-radius:9px;padding:9px 12px;font-family:inherit;font-size:14px;width:100%}
-.mail-fields textarea{min-height:90px;resize:vertical}
-.mail-row{display:flex;gap:8px}
-.mail-row .lab{width:64px;flex-shrink:0;border:1px solid var(--border-2);border-radius:9px;padding:9px 10px;font-size:13px;color:var(--text-2);background:var(--surface-2)}
+.document-request{margin-top:16px;padding:14px;border:1px solid var(--border-2);border-radius:12px;background:var(--surface-2)}
+.document-request[hidden]{display:none}
+.document-request__head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:9px;font-size:14px}
+.document-request__copy{display:inline-flex;align-items:center;gap:6px;border:0;background:transparent;color:var(--text-2);font-family:inherit;font-size:13px;cursor:pointer;padding:4px}
+.document-request__copy:hover{color:var(--text)}
+.document-request__copy .icon{width:17px;height:17px}
+.document-request textarea{display:block;width:100%;min-height:105px;resize:vertical;border:1px solid var(--border-2);border-radius:9px;padding:10px 12px;background:#fff;color:var(--text);font-family:inherit;font-size:14px;line-height:1.5}
+.document-request__status{display:block;min-height:18px;margin-top:6px;color:var(--teal);font-size:12px}
 @media (max-width:1100px){.stat-grid.cols-4{grid-template-columns:repeat(2,1fr)}}
 @media (max-width:720px){.tcard{flex-wrap:wrap}.tcard-right{text-align:left;min-width:0}}
 </style>
@@ -2861,6 +2861,7 @@ h1.tender-page-title,
   <symbol id="i-star" viewBox="0 0 24 24"><path d="M12 3.5l2.6 5.7 6.1.6-4.6 4.1 1.4 6-5.5-3.2-5.5 3.2 1.4-6L3.3 9.8l6.1-.6z"/></symbol>
   <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 6.5h15"/><path d="M9 6.5V4.8a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v1.7"/><path d="M6.3 6.5 7 19a1.4 1.4 0 0 0 1.4 1.3h7.2A1.4 1.4 0 0 0 17 19l.7-12.5"/></symbol>
   <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14"/><path d="M5 12h14"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8" y="8" width="11" height="11" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></symbol>
   <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12"/><path d="M18 6 6 18"/></symbol>
   <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></symbol>
   <symbol id="i-collapse" viewBox="0 0 24 24"><path d="M14.5 6 8.5 12l6 6"/></symbol>

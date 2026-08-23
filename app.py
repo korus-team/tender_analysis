@@ -10,32 +10,38 @@ enrich, icp_config) — эти файлы менять не нужно.
 from __future__ import annotations
 
 import json
+import logging
 import math
 import os
 import re
 import tempfile
+import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from functools import wraps
 from threading import Lock
 
-from flask import (Flask, Response, abort, flash, jsonify, redirect, render_template,
+from flask import (Flask, Response, abort, flash, g, jsonify, redirect, render_template,
                    request, send_from_directory, session, url_for)
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import storage
 import directions
 import company_size
-import priority_companies
-from main import run_ingest, rescore_all
-from enrich import enrich_pending
+from services import priority_companies
+from services.rescoring import rescore_all
 from scoring import theme_score
 from icp_config import load_icp, save_icp
-from kontur_excel import KonturExcelError, import_kontur_xlsx
+from integrations.kontur_excel import KonturExcelError, import_kontur_xlsx
 import notification_service
 from document_analysis import (DocumentAnalysisError, analyze as analyze_documents,
                                document_upload_dir, persist_uploads, read_uploads)
+from services.document_requests import build_document_request
+from observability.logging_config import configure_logging
+
+configure_logging()
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = "dar-tender-assistant-local"
@@ -45,9 +51,7 @@ app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
 RELEVANT_MIN = 60      # «подходит нашей компании»
 TOP_MIN = 70           # «наиболее подходящее»; числа вторичны, важнее теги и объяснение
 NOTIFY_MIN_SCORE = 60  # порог: уведомления только для тендеров с баллом не ниже
-INGEST_MAX_PAGES = 50  # сколько страниц собирать
 USE_LLM_SCORING = str(os.getenv("USE_LLM_SCORING", "0")) == "1"
-ENRICH_MIN_SCORE = 50  # какие тендеры обогащать
 PER_PAGE = 20          # тендеров на страницу списка
 
 _BLOCK_RE = re.compile(r"^(заказчик|организатор)\s*:?\s*", re.I)
@@ -175,7 +179,7 @@ def _clean_customer(c):
     if not c:
         return None
     c = _BLOCK_RE.sub("", c)              # убрать префикс «Заказчик:»
-    c = _PLACEHOLDER_RE.sub("", c)        # убрать плашки ░▒▓█ (rostender прячет имя)
+    c = _PLACEHOLDER_RE.sub("", c)        # убрать служебные блочные заглушки
     c = re.sub(r"\s+", " ", c).strip()
     return c or None
 
@@ -654,6 +658,10 @@ notification_service.prune_ineligible_site_notifications(
     _notification_conn, relevant_min=RELEVANT_MIN
 )
 _notification_conn.close()
+logger.info(
+    "application_initialized llm_scoring=%s database=%s",
+    USE_LLM_SCORING, storage.DB_PATH,
+)
 
 
 @app.before_request
@@ -664,6 +672,33 @@ def _require_login():
     if not session.get("user_id"):
         return redirect(url_for("login"))
     return None
+
+
+@app.before_request
+def _start_request_timer():
+    g.request_started_at = time.perf_counter()
+
+
+@app.after_request
+def _log_request(response):
+    if request.endpoint != "static":
+        started = getattr(g, "request_started_at", None)
+        elapsed_ms = ((time.perf_counter() - started) * 1000 if started else 0)
+        logger.info(
+            "http_request method=%s path=%s status=%s duration_ms=%.1f",
+            request.method, request.path, response.status_code, elapsed_ms,
+        )
+    return response
+
+
+@app.teardown_request
+def _log_request_error(error):
+    if error is not None:
+        logger.error(
+            "http_request_failed method=%s path=%s error=%s",
+            request.method, request.path, type(error).__name__,
+            exc_info=(type(error), error, error.__traceback__),
+        )
 
 
 @app.context_processor
@@ -948,6 +983,7 @@ def priorities_delete(cid):
     deleted = conn.execute("DELETE FROM priority_companies WHERE id = ?", (cid,)).rowcount
     conn.commit()
     conn.close()
+    logger.info("priority_company_deleted id=%s deleted=%s", cid, bool(deleted))
     flash("Компания удалена из приоритетных" if deleted else "Компания уже удалена")
     return redirect(url_for("priorities"))
 
@@ -976,6 +1012,10 @@ def priorities_import():
     try:
         conn = storage.connect()
         summary = priority_companies.import_xlsx(f, conn)
+        logger.info(
+            "priority_companies_imported sheet=%s added=%s duplicates=%s invalid=%s",
+            summary["sheet"], summary["added"], summary["duplicates"], summary["invalid"],
+        )
         message = f"Добавлено компаний: {summary['added']}"
         if summary["duplicates"]:
             message += f"; уже были в списке: {summary['duplicates']}"
@@ -983,8 +1023,10 @@ def priorities_import():
             message += f"; пропущено строк без корректного названия или ИНН: {summary['invalid']}"
         flash(message)
     except priority_companies.PriorityCompanyImportError as exc:
+        logger.warning("priority_companies_import_rejected error=%s", exc)
         flash(str(exc), "err")
     except Exception as exc:  # noqa: BLE001
+        logger.exception("priority_companies_import_failed")
         flash(f"Не удалось импортировать компании: {exc}", "err")
     finally:
         if conn is not None:
@@ -1056,7 +1098,8 @@ def tender(tender_id):
     }.get(norm, "Назад к списку")
     return render_template("tender.html", active="tenders", t=t, back_url=back_url,
                            back_label=back_label, override=override, eff_rel=eff_rel,
-                           not_pursued=not_pursued)
+                           not_pursued=not_pursued,
+                           document_request_text=build_document_request(t))
 
 
 @app.route("/tender/<tender_id>/analyze-documents", methods=["POST"])
@@ -1076,10 +1119,15 @@ def tender_analyze_documents(tender_id):
         documents = persist_uploads(documents, tender_id)
         _save_document_analysis(conn, tender_id, documents, result)
     except DocumentAnalysisError as exc:
+        logger.warning("document_analysis_rejected tender_id=%s error=%s", tender_id, exc)
         flash(str(exc), "err")
     finally:
         conn.close()
     if 'result' in locals():
+        logger.info(
+            "document_analysis_completed tender_id=%s analyzer=%s documents=%s",
+            tender_id, result["analyzer"], len(documents),
+        )
         source = "OpenAI" if result["analyzer"] == "openai" else "локальный экспресс-анализ"
         flash(f"Документы проанализированы: {source}.")
     ret = (request.form.get("ret") or "").strip()
@@ -1451,6 +1499,7 @@ def delete_tender_route(tender_id):
     conn = storage.connect()
     ok = storage.delete_tender(conn, tender_id)
     conn.close()
+    logger.info("tender_deleted tender_id=%s deleted=%s", tender_id, ok)
     flash("Тендер удалён" if ok else "Тендер не найден", "ok" if ok else "err")
     return redirect(url_for("tenders"))
 
@@ -1541,16 +1590,6 @@ def toggle_not_pursued(tender_id):
     return redirect(url_for("tenders") if newval else (request.referrer or url_for("tenders")))
 
 
-@app.route("/ingest", methods=["POST"])
-def ingest():
-    """Одна кнопка: собрать из всех источников (с фильтром 10 млрд ₽) и обогатить."""
-    try:
-        run_ingest(max_pages=INGEST_MAX_PAGES, use_llm=USE_LLM_SCORING, write_json=True)
-    except Exception as e:  # noqa: BLE001
-        flash(f"Ошибка сбора: {e}", "err")
-    return redirect(request.referrer or url_for("home"))
-
-
 @app.route("/import/kontur", methods=["POST"])
 def import_kontur():
     """Загрузка Excel-выгрузки Контур.Закупок через общий конвейер скоринга."""
@@ -1572,6 +1611,7 @@ def import_kontur():
             "status": "queued", "found": 0, "processed": 0,
             "llm_scored": 0, "remaining": 0,
         }
+    logger.info("kontur_import_queued job_id=%s filename=%s", job_id, upload.filename)
 
     def update_progress(progress: dict[str, int]) -> None:
         with _kontur_import_lock:
@@ -1602,9 +1642,15 @@ def import_kontur():
                 notification_service.dispatch_email_outbox()
             with _kontur_import_lock:
                 _kontur_import_jobs[job_id].update(status="complete", summary=summary)
+            logger.info(
+                "kontur_import_completed job_id=%s parsed=%s kept=%s new=%s updated=%s",
+                job_id, summary.get("parsed"), summary.get("kept"),
+                summary.get("new"), summary.get("updated"),
+            )
         except Exception as exc:  # noqa: BLE001
             with _kontur_import_lock:
                 _kontur_import_jobs[job_id].update(status="error", error=str(exc))
+            logger.exception("kontur_import_failed job_id=%s", job_id)
         finally:
             os.unlink(temp_path)
 

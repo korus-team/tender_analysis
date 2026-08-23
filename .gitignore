@@ -17,6 +17,9 @@ __pycache__/
 *.sqlite3
 tenders.db
 *.json.bak
+tenders_raw.json
+tenders_scored.json
+test_fixture.html
 
 # Логи и временное
 *.log

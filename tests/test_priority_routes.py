@@ -68,6 +68,31 @@ class PriorityRoutesTests(unittest.TestCase):
                     conn.close()
                 self.assertEqual(remaining, 0)
 
+                conn = storage.connect()
+                storage.save_scored(conn, [{
+                    "tender_id": "kontur:request-documents",
+                    "number": "42",
+                    "title": "Поставка аналитической платформы",
+                    "url": "https://example.test/tender/42",
+                    "subject": "Поставка аналитической платформы",
+                    "customer": "ООО Тест",
+                    "deadline": "2099-08-24T17:30:00",
+                    "source": "kontur-excel",
+                    "score": 75,
+                    "verdict": "take",
+                    "reasons": ["Тестовая причина"],
+                    "labels": [],
+                }])
+                conn.close()
+                response = client.get("/tender/kontur:request-documents")
+                page = response.get_data(as_text=True)
+                self.assertEqual(response.status_code, 200)
+                self.assertIn("Добрый день, коллеги!", page)
+                self.assertIn("Копировать", page)
+                self.assertNotIn("Здравствуйте!", page)
+                self.assertNotIn(">Отправить</button>", page)
+                self.assertNotIn("placeholder=\"tenders@company.ru\"", page)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -23,7 +23,7 @@ CREATE TABLE IF NOT EXISTS tenders (
     title                 TEXT,               -- заголовок
     url                   TEXT,               -- ссылка на площадку
     subject               TEXT,               -- предмет / описание
-    customer              TEXT,               -- заказчик (на rostender часто скрыт)
+    customer              TEXT,               -- заказчик
     region                TEXT,
     location              TEXT,
     category              TEXT,
@@ -34,7 +34,7 @@ CREATE TABLE IF NOT EXISTS tenders (
     days_left             INTEGER,            -- дней до дедлайна (кэш)
     contract_security_pct TEXT,               -- обеспечение контракта
     bid_security_pct      TEXT,               -- обеспечение заявки
-    source                TEXT,               -- источник (rostender.info и т.д.)
+    source                TEXT,               -- источник тендера
     parsed_at             TEXT,               -- когда собрано парсером
     score                 INTEGER,            -- оценка соответствия (0..100)
     verdict               TEXT,               -- вердикт скоринга (take/reject/...)
