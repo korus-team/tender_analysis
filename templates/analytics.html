@@ -11,7 +11,7 @@
   </div>
 </div>
 
-<div class="stat-grid cols-4">
+<div class="stat-grid cols-4 analytics-kpi">
   {% for c in cards %}
   <div class="pstat {{ c.cls }}">
     <div class="plabel">{{ c.label }}</div>
@@ -60,7 +60,7 @@
     <div class="legend">
       {% for l in legend %}
       <div class="legend-item" data-category="{{ l.key }}" data-count="{{ l.count }}">
-        <span class="dot" style="background:{{ l.color }}"></span>
+        <span class="dot" data-dot-color="{{ l.color }}"></span>
         <span>{{ l.name }} · {{ l.count }}</span>
       </div>
       {% endfor %}
@@ -217,4 +217,90 @@
 }
 
 </style>
+
+<style>
+/* =================== ANALYTICS MOBILE KPI ALIGNMENT =================== */
+@media(max-width:768px){
+  .analytics-kpi .pstat{
+    min-height:190px !important;
+    display:flex !important;
+    flex-direction:column !important;
+    align-items:flex-start !important;
+    justify-content:flex-start !important;
+  }
+  .analytics-kpi .pstat .plabel{
+    width:100% !important;
+    margin-bottom:12px !important;
+  }
+  .analytics-kpi .pstat .pnum{
+    margin-top:auto !important;
+    align-self:flex-start !important;
+    text-align:left !important;
+    line-height:1 !important;
+  }
+}
+</style>
+
+
+<script>
+document.querySelectorAll('.dot[data-dot-color]').forEach(function(dot){
+  dot.style.background = dot.dataset.dotColor || '#DABDFF';
+});
+</script>
+
+
+
+<style>
+/* =================== PERFECT ANALYTICS GRID =================== */
+:root{
+  --analytics-gap:18px;
+}
+
+/* Верхние карточки и нижний ряд имеют один и тот же вертикальный шаг */
+.analytics-kpi{
+  gap:var(--analytics-gap) !important;
+  margin-bottom:var(--analytics-gap) !important;
+}
+
+/*
+  Ширина правой нижней карточки = ровно ширине одной из 4 KPI:
+  (100% - три промежутка по 18px) / 4
+*/
+.analytics-main-grid{
+  display:grid !important;
+  grid-template-columns:
+    minmax(0,1fr)
+    calc((100% - (3 * var(--analytics-gap))) / 4) !important;
+  gap:var(--analytics-gap) !important;
+  align-items:stretch !important;
+  width:100% !important;
+  margin:0 !important;
+}
+
+.analytics-main-grid .an-card,
+.analytics-main-grid .an-insert{
+  width:100% !important;
+  min-width:0 !important;
+  height:100% !important;
+  margin:0 !important;
+  align-self:stretch !important;
+}
+
+/* Никаких дополнительных внешних отступов между диаграммой и карточкой */
+.analytics-main-grid > *{
+  margin:0 !important;
+}
+
+/* На мобильном всё снова одной колонкой */
+@media(max-width:768px){
+  .analytics-kpi{
+    margin-bottom:16px !important;
+  }
+  .analytics-main-grid{
+    grid-template-columns:1fr !important;
+    gap:16px !important;
+  }
+}
+</style>
+
 {% endblock %}

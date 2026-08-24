@@ -5,13 +5,13 @@
 </div>
 
 <div class="prio-wrap">
-  <div class="prio-left">
-    <div class="search-row">
+  <div class="prio-left prio-mobile-column">
+    <div class="search-row prio-search-row">
       <form class="prio-search" method="get" action="{{ url_for('priorities') }}">
         <div class="search-box"><svg class="icon"><use href="#i-search"/></svg><input name="q" value="{{ q }}" placeholder="Поиск по ИНН или названию..."></div>
         <button class="btn-filter" type="submit">Найти</button>
       </form>
-      <form method="post" action="{{ url_for('priorities_clear') }}" onsubmit="return confirm('Очистить весь список приоритетных компаний?')"><button class="btn-filter" type="submit">Очистить все</button></form>
+      <form method="post" action="{{ url_for('priorities_clear') }}" onsubmit="return confirm('Очистить весь список приоритетных компаний?')"><button class="btn-filter" type="submit"><span class="desktop-clear-label">Очистить все</span><span class="mobile-clear-label">Очистить</span></button></form>
     </div>
     {% if companies %}
     {% for c in companies %}
@@ -73,6 +73,104 @@
     justify-content:center !important;
     font-size:16px !important;
     line-height:1 !important;
+  }
+}
+</style>
+
+
+<style>
+.mobile-clear-label{display:none}
+@media(max-width:768px){
+  .desktop-clear-label{display:none !important}
+  .mobile-clear-label{display:inline !important}
+  .prio-add-card,
+  .prio-search-row,
+  .prio-item{
+    width:100% !important;
+    max-width:100% !important;
+    box-sizing:border-box !important;
+  }
+}
+</style>
+
+
+<style>
+/* ===== PRIORITIES MOBILE WIDTH FIX ===== */
+@media(max-width:768px){
+  .prio-wrap{
+    display:flex !important;
+    flex-direction:column !important;
+    gap:16px !important;
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    overflow:visible !important;
+  }
+  .prio-left,
+  .prio-add{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+  }
+  .prio-add{
+    order:-1 !important;
+    position:static !important;
+  }
+
+  /* Поиск и кнопки не создают горизонтальный overflow */
+  .prio-search-row{
+    display:grid !important;
+    grid-template-columns:1fr !important;
+    gap:10px !important;
+    width:100% !important;
+    min-width:0 !important;
+    margin:0 0 14px !important;
+  }
+  .prio-search{
+    display:grid !important;
+    grid-template-columns:minmax(0,1fr) auto !important;
+    gap:10px !important;
+    width:100% !important;
+    min-width:0 !important;
+  }
+  .prio-search .search-box{
+    width:100% !important;
+    max-width:none !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+  }
+  .prio-search .search-box input{
+    min-width:0 !important;
+    width:100% !important;
+    font-size:16px !important;
+  }
+  .prio-search-row > form:not(.prio-search){
+    width:auto !important;
+    justify-self:start !important;
+  }
+
+  /* Карточки компаний ровно той же ширины, что Добавить компании */
+  .prio-row{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+    margin-left:0 !important;
+    margin-right:0 !important;
+    overflow:hidden !important;
+  }
+  .prio-info{
+    min-width:0 !important;
+  }
+  .prio-name,
+  .prio-inn{
+    overflow-wrap:anywhere !important;
+  }
+  .prio-del{
+    flex:0 0 36px !important;
+    width:36px !important;
+    height:36px !important;
   }
 }
 </style>
