@@ -453,9 +453,9 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
 
             item["days_left"] = _days_left(item.get("deadline"), now)
             result = (
-                score_tender_llm(item, icp, scorer=llm_scorer)
+                score_tender_llm(item, icp, scorer=llm_scorer, now=now)
                 if llm_scorer is not None
-                else score_tender(item, icp)
+                else score_tender(item, icp, now=now)
             )
             if llm_scorer is not None:
                 llm_scored += 1

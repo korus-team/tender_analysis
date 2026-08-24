@@ -9,8 +9,10 @@
 """
 
 from __future__ import annotations
+import math
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 
 import directions
 
@@ -64,7 +66,23 @@ def theme_score(tender: dict, query: str) -> tuple[int, list[str]]:
     return score, matched
 
 
-def score_tender(tender: dict, icp: dict) -> ScoreResult:
+def deadline_time_label(
+        deadline_value, days_left: int, now: datetime | None = None
+) -> str:
+    """Не показывает «0 дн.»: внутри последних суток возвращает часы."""
+    if days_left != 0:
+        return f"{days_left} дн."
+    try:
+        deadline = datetime.fromisoformat(str(deadline_value or ""))
+        seconds_left = (deadline - (now or datetime.now())).total_seconds()
+        if seconds_left > 0:
+            return f"{max(1, math.ceil(seconds_left / 3600))} ч."
+    except (TypeError, ValueError):
+        pass
+    return "менее суток"
+
+
+def score_tender(tender: dict, icp: dict, *, now: datetime | None = None) -> ScoreResult:
     text = _haystack(tender)
     reasons: list[str] = []
     labels: list[str] = []
@@ -82,6 +100,8 @@ def score_tender(tender: dict, icp: dict) -> ScoreResult:
             return ScoreResult(0, "reject", [f"Исключённый регион: {ex}"], ["регион исключён"])
 
     days_left = tender.get("days_left")
+    deadline_time = (deadline_time_label(tender.get("deadline"), days_left, now)
+                     if days_left is not None else None)
     if days_left is not None and days_left < 0:
         return ScoreResult(
             0, "reject",
@@ -91,7 +111,7 @@ def score_tender(tender: dict, icp: dict) -> ScoreResult:
     if days_left is not None and days_left <= 3 and not is_license:
         return ScoreResult(
             0, "reject",
-            [f"До дедлайна {days_left} дн. — такие закупки оставляем только для лицензий"],
+            [f"До дедлайна {deadline_time} — такие закупки оставляем только для лицензий"],
             ["дедлайн близко"],
         )
 
@@ -174,13 +194,15 @@ def score_tender(tender: dict, icp: dict) -> ScoreResult:
     if days_left is not None:
         if days_left >= 14:
             score += weights["deadline"]
-            reasons.append(f"До дедлайна {days_left} дн. — времени достаточно")
+            reasons.append(f"До дедлайна {deadline_time} — времени достаточно")
         elif is_license and days_left <= 3:
-            reasons.append(f"До дедлайна {days_left} дн., но для лицензии короткий срок допустим")
+            reasons.append(
+                f"До дедлайна {deadline_time}, но для лицензии короткий срок допустим"
+            )
             labels.append("срочная лицензия")
         elif days_left > 3:
             score += weights["deadline"] * 0.5
-            reasons.append(f"До дедлайна {days_left} дн. — время ограничено")
+            reasons.append(f"До дедлайна {deadline_time} — время ограничено")
             labels.append("дедлайн близко")
 
     score_int = max(0, min(100, round(score)))
@@ -195,7 +217,9 @@ def score_tender(tender: dict, icp: dict) -> ScoreResult:
     return ScoreResult(score_int, verdict, reasons, labels)
 
 
-def score_tender_llm(tender: dict, icp: dict, *, scorer=None) -> ScoreResult:
+def score_tender_llm(
+        tender: dict, icp: dict, *, scorer=None, now: datetime | None = None
+) -> ScoreResult:
     """Return the hybrid score: 80% LLM semantic score and 20% rule score.
 
     The rule result remains useful as a transparent audit trail: its labels and
@@ -208,7 +232,7 @@ def score_tender_llm(tender: dict, icp: dict, *, scorer=None) -> ScoreResult:
     3. reasons
     4. labels
     """
-    rules_result = score_tender(tender, icp)
+    rules_result = score_tender(tender, icp, now=now)
 
     if scorer is None:
         from LLM_scoring import OpenAITenderScorer

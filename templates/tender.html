@@ -8,13 +8,14 @@
 {% endmacro %}
 <a class="back-link" href="{{ back_url }}"><svg class="icon"><use href="#i-arrow-left"/></svg>{{ back_label }}</a>
 
-<div class="t-actions-top">
+{% set owner = taken_by.get(t.tender_id) %}
+<div class="t-actions-top"{% if owner %} style="--owner-color:{{ owner.color }};--owner-text:{{ owner.text_color }}"{% endif %}>
   {% if t.tender_id in my_fav_ids %}
     <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-label" type="submit"><svg class="icon"><use href="#i-close"/></svg>Убрать метку</button></form>
   {% else %}
     <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-label" type="submit"><svg class="icon"><use href="#i-plus"/></svg>Добавить метку</button></form>
   {% endif %}
-  {% if taken_by.get(t.tender_id) %}<span class="ttag ttag-taken">Взято: {{ taken_by[t.tender_id] }}</span>{% endif %}
+  {% if owner %}<span class="ttag ttag-taken">Взято: {{ owner.username }}</span>{% endif %}
   <form class="favorite-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}" style="margin-left:auto">
     <button class="tcard-heart {{ 'on' if t.tender_id in my_fav_ids }}" type="submit" aria-label="В избранное"><svg class="icon"><use href="#i-heart"/></svg></button>
   </form>

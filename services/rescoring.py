@@ -31,6 +31,7 @@ def rescore_all(icp: dict | None = None, use_llm: bool = False) -> int:
         llm_scorer = OpenAITenderScorer()
 
     conn = storage.connect()
+    scoring_now = datetime.now()
     try:
         rows = storage.query_tenders(conn, limit=None)
         count = 0
@@ -38,9 +39,9 @@ def rescore_all(icp: dict | None = None, use_llm: bool = False) -> int:
             tender = dict(row)
             tender["days_left"] = _days_left(tender.get("deadline"))
             result = (
-                score_tender_llm(tender, profile, scorer=llm_scorer)
+                score_tender_llm(tender, profile, scorer=llm_scorer, now=scoring_now)
                 if llm_scorer is not None
-                else score_tender(tender, profile)
+                else score_tender(tender, profile, now=scoring_now)
             )
             storage.update_score(
                 conn,

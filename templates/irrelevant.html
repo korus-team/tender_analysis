@@ -11,7 +11,8 @@
 
 {% if tenders %}
 {% for t in tenders %}
-<div class="tcard{% if taken_by.get(t.tender_id) %} tcard--taken{% endif %}">
+{% set owner = taken_by.get(t.tender_id) %}
+<div class="tcard{% if owner %} tcard--taken{% endif %}"{% if owner %} style="--owner-color:{{ owner.color }};--owner-text:{{ owner.text_color }}"{% endif %}>
   <div class="tcard-main">
     <div class="ttags">
       {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
@@ -19,6 +20,7 @@
       {% if t.is_license %}<span class="ttag ttag-license2">Лицензионный</span>{% endif %}
       {% if t.law %}<span class="ttag ttag-law">{{ t.law }}</span>{% endif %}
       {% if t.np %}<span class="ttag ttag-np">Не пошли</span>{% endif %}
+      {% if owner %}<span class="ttag ttag-taken">Взято: {{ owner.username }}</span>{% endif %}
     </div>
     <div class="tcard-title"><a href="{{ url_for('tender', tender_id=t.tender_id, ret='/irrelevant') }}">{{ t.title }}</a></div>
     <div class="tcard-sub">{{ t.customer or 'Заказчик скрыт площадкой' }}</div>

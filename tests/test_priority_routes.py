@@ -23,6 +23,10 @@ class PriorityRoutesTests(unittest.TestCase):
             with patch("storage.connect", side_effect=temp_connect):
                 webapp = importlib.import_module("app")
                 conn = storage.connect()
+                user_id = conn.execute(
+                    "INSERT INTO users (username, password_hash, created_at) VALUES (?, ?, ?)",
+                    ("test", "not-used-in-this-test", "2026-08-24T12:00:00"),
+                ).lastrowid
                 conn.execute(
                     "INSERT INTO priority_companies (name, inn) VALUES (?, ?)",
                     ("Альфа", "7707083893"),
@@ -40,7 +44,7 @@ class PriorityRoutesTests(unittest.TestCase):
                 webapp.app.config["TESTING"] = True
                 client = webapp.app.test_client()
                 with client.session_transaction() as session:
-                    session["user_id"] = 1
+                    session["user_id"] = user_id
                     session["username"] = "test"
                     session["has_avatar"] = False
 

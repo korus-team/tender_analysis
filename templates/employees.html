@@ -13,7 +13,7 @@
 </div>
 
 {% for e in employees %}
-<div class="emp-block">
+<div class="emp-block" style="--owner-color:{{ e.color }};--owner-text:{{ e.text_color }}">
   <div class="emp-head">
     <div class="emp-ava">{{ e.username[:1]|upper }}</div>
     <div class="emp-name">{{ e.username }}{% if e.is_me %}<span class="emp-you">вы</span>{% endif %}</div>
@@ -22,7 +22,7 @@
   {% if e.favs %}
   <div class="tlist">
     {% for t in e.favs %}
-    <div class="trow">
+    <div class="trow trow--taken">
       <a class="row-link" href="{{ url_for('tender', tender_id=t.tender_id, ret='/employees') }}">
         <div class="tmain"><div class="ttitle">{{ t.title }}</div><div><span class="tag">{{ t.category }}</span></div></div>
         <div class="tmeta"><span class="pct {{ t.level }}">{{ t.score }}%</span><span class="cost">{{ t.price_fmt }}</span><span class="days">{% if t.deadline_fmt != '—' %}до {{ t.deadline_fmt }}{% else %}срок не указан{% endif %}</span></div>
