@@ -2,12 +2,13 @@
 {% block content %}
 <style>.filters-panel--hidden{display:none}</style>
 <div class="topbar">
-  <div><h1>Состояние на {{ now }}</h1></div>
+  <div><h1>Последняя загрузка: {{ last_upload }}</h1></div>
   <div class="topbar-right">
     <form id="konturImportForm" method="post" action="{{ url_for('import_kontur') }}" enctype="multipart/form-data">
       <label class="btn-label" for="konturFile"><svg class="icon"><use href="#i-plus"/></svg>Загрузить Excel</label>
       <input id="konturFile" type="file" name="kontur_file" accept=".xlsx" hidden>
     </form>
+    <a class="btn-label" href="{{ url_for('upload_history') }}">Журнал загрузок</a>
   </div>
 </div>
 

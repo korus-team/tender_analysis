@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="topbar">
+  <div>
+    <h1>Журнал загрузок</h1>
+    <div class="sub">Успешно обработанные файлы .xlsx</div>
+  </div>
+  <div class="topbar-right">
+    <a class="btn-label" href="{{ url_for('home') }}">← Назад к поиску</a>
+  </div>
+</div>
+
+{% if uploads %}
+<div class="upload-history-card">
+  <div class="upload-history-scroll">
+    <table class="upload-history-table">
+      <thead>
+        <tr>
+          <th>Пользователь</th>
+          <th>Дата загрузки</th>
+          <th>файл</th>
+          <th>Шаблон</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for upload in uploads %}
+        <tr>
+          <td>{{ upload.username }}</td>
+          <td>{{ upload.uploaded_at_fmt }}</td>
+          <td>{{ upload.filename }}</td>
+          <td>{{ upload.sheet_name or '—' }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% else %}
+<div class="empty">Загрузок пока нет.</div>
+{% endif %}
+
+<style>
+.upload-history-card{background:#fff;border:1px solid var(--border);border-radius:16px;padding:8px 20px}
+.upload-history-scroll{overflow-x:auto}
+.upload-history-table{width:100%;border-collapse:collapse;min-width:700px}
+.upload-history-table th{color:var(--text-2);font-size:13px;font-weight:600;text-align:left;padding:14px 12px;border-bottom:1px solid var(--border)}
+.upload-history-table td{font-size:14px;padding:16px 12px;border-bottom:1px solid var(--border)}
+.upload-history-table tr:last-child td{border-bottom:0}
+</style>
+{% endblock %}

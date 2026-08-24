@@ -18,7 +18,7 @@ import tempfile
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
-from datetime import datetime
+from datetime import datetime, timedelta
 from functools import wraps
 from threading import Lock
 
@@ -420,6 +420,38 @@ def _ensure_auth_tables():
     conn.close()
 
 
+def _ensure_upload_history_table():
+    """Журнал успешно обработанных Excel-выгрузок Контур.Закупок."""
+    conn = storage.connect()
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS upload_history ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "user_id INTEGER, "
+        "username TEXT NOT NULL, "
+        "uploaded_at TEXT NOT NULL, "
+        "filename TEXT NOT NULL, "
+        "sheet_name TEXT)"
+    )
+    conn.commit()
+    conn.close()
+
+
+def _prune_upload_history(conn, now: datetime | None = None) -> int:
+    """Удаляет записи журнала старше 30 дней и возвращает их количество."""
+    cutoff = (now or datetime.now()) - timedelta(days=30)
+    cursor = conn.execute(
+        "DELETE FROM upload_history WHERE uploaded_at < ?",
+        (cutoff.isoformat(timespec="seconds"),),
+    )
+    conn.commit()
+    return cursor.rowcount
+
+
+def _upload_history_cutoff(now: datetime | None = None) -> str:
+    """Нижняя граница видимого месячного журнала без записи в БД."""
+    return ((now or datetime.now()) - timedelta(days=30)).isoformat(timespec="seconds")
+
+
 def current_user():
     uid = session.get("user_id")
     if not uid:
@@ -648,6 +680,10 @@ def _annotate_tasks(rows):
 _ensure_favorite_column()
 _ensure_tasks_table()
 _ensure_auth_tables()
+_ensure_upload_history_table()
+_upload_history_conn = storage.connect()
+_prune_upload_history(_upload_history_conn)
+_upload_history_conn.close()
 _ensure_meta_table()
 _ensure_priorities_table()
 _ensure_settings_table()
@@ -841,7 +877,21 @@ def home():
     rows = [t for t in rows
             if _passes_company_filter(t) and _not_expired(t)
             and _is_relevant_eff(t, rel_map) and t["tender_id"] not in not_pursued]
+    last_upload_row = conn.execute(
+        "SELECT uploaded_at FROM upload_history WHERE uploaded_at >= ? "
+        "ORDER BY uploaded_at DESC, id DESC LIMIT 1",
+        (_upload_history_cutoff(),),
+    ).fetchone()
     conn.close()
+
+    last_upload = "—"
+    if last_upload_row:
+        try:
+            last_upload = datetime.fromisoformat(last_upload_row["uploaded_at"]).strftime(
+                "%d.%m.%Y %H:%M"
+            )
+        except (TypeError, ValueError):
+            last_upload = last_upload_row["uploaded_at"]
 
     for t in rows:
         t["law"] = _law_tag(t)
@@ -887,12 +937,31 @@ def home():
     page_rows = view[(page - 1) * PER_PAGE:(page - 1) * PER_PAGE + PER_PAGE]
 
     return render_template(
-        "home.html", active="home", now=datetime.now().strftime("%d.%m %H:%M"),
+        "home.html", active="home", last_upload=last_upload,
         stat_total=stat_total, stat_top=stat_top, stat_lic=stat_lic,
         stat_priority=stat_priority, tenders=page_rows,
         direction=direction, ptype=ptype, q=q, sort=sort, show=show, show_filters=show_filters,
         type_keys=directions.all_keys(include_other=False), dir_name=directions.name_of,
         total_found=total_found, page=page, total_pages=total_pages)
+
+
+@app.route("/upload-history")
+def upload_history():
+    conn = storage.connect()
+    rows = [dict(row) for row in conn.execute(
+        "SELECT username, uploaded_at, filename, sheet_name "
+        "FROM upload_history WHERE uploaded_at >= ? ORDER BY uploaded_at DESC, id DESC",
+        (_upload_history_cutoff(),),
+    ).fetchall()]
+    conn.close()
+    for row in rows:
+        try:
+            row["uploaded_at_fmt"] = datetime.fromisoformat(row["uploaded_at"]).strftime(
+                "%d.%m.%Y %H:%M"
+            )
+        except (TypeError, ValueError):
+            row["uploaded_at_fmt"] = row["uploaded_at"]
+    return render_template("upload_history.html", active="home", uploads=rows)
 
 
 def _group_by_direction(annotated_rows):
@@ -1599,6 +1668,11 @@ def import_kontur():
     if not upload.filename.lower().endswith(".xlsx"):
         return jsonify({"error": "Поддерживаются только выгрузки Контур.Закупок в формате .xlsx."}), 400
 
+    filename = upload.filename.replace("\\", "/").rsplit("/", 1)[-1]
+    uploaded_at = datetime.now().isoformat(timespec="seconds")
+    uploader_id = session.get("user_id")
+    uploader_name = session.get("username") or "Неизвестный пользователь"
+
     with _kontur_import_lock:
         if any(job["status"] in {"queued", "running"} for job in _kontur_import_jobs.values()):
             return jsonify({"error": "Загрузка Excel уже выполняется."}), 409
@@ -1640,6 +1714,17 @@ def import_kontur():
                 notification_conn.close()
             if current_settings["n_new_email"] == "1":
                 notification_service.dispatch_email_outbox()
+            history_conn = storage.connect()
+            try:
+                _prune_upload_history(history_conn)
+                history_conn.execute(
+                    "INSERT INTO upload_history "
+                    "(user_id, username, uploaded_at, filename, sheet_name) VALUES (?,?,?,?,?)",
+                    (uploader_id, uploader_name, uploaded_at, filename, summary.get("sheet")),
+                )
+                history_conn.commit()
+            finally:
+                history_conn.close()
             with _kontur_import_lock:
                 _kontur_import_jobs[job_id].update(status="complete", summary=summary)
             logger.info(
