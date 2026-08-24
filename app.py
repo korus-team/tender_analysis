@@ -1864,7 +1864,7 @@ def import_kontur_status(job_id):
 @app.route("/rescore", methods=["POST"])
 def rescore():
     try:
-        n = rescore_all(load_icp())
+        n = rescore_all(load_icp(), use_llm=USE_LLM_SCORING)
         flash(f"Баллы пересчитаны: {n} тендеров")
     except Exception as e:  # noqa: BLE001
         flash(f"Ошибка пересчёта: {e}", "err")

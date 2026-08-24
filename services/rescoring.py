@@ -7,9 +7,10 @@ from datetime import datetime
 
 import storage
 from icp_config import load_icp
-from scoring import score_tender, score_tender_llm
+from scoring import _llm_input, score_tender, score_tender_llm
 
 logger = logging.getLogger(__name__)
+RESCORE_BATCH_SIZE = 5
 
 
 def _days_left(deadline: str | None) -> int | None:
@@ -34,25 +35,38 @@ def rescore_all(icp: dict | None = None, use_llm: bool = False) -> int:
     scoring_now = datetime.now()
     try:
         rows = storage.query_tenders(conn, limit=None)
-        count = 0
-        for row in rows:
-            tender = dict(row)
+        tenders = [dict(row) for row in rows]
+        for tender in tenders:
             tender["days_left"] = _days_left(tender.get("deadline"))
-            result = (
-                score_tender_llm(tender, profile, scorer=llm_scorer, now=scoring_now)
-                if llm_scorer is not None
-                else score_tender(tender, profile, now=scoring_now)
-            )
-            storage.update_score(
-                conn,
-                tender["tender_id"],
-                result.score,
-                result.verdict,
-                result.reasons,
-                result.labels,
-            )
-            count += 1
-        conn.commit()
+
+        count = 0
+        for start in range(0, len(tenders), RESCORE_BATCH_SIZE):
+            batch = tenders[start:start + RESCORE_BATCH_SIZE]
+            if llm_scorer is not None:
+                llm_results = llm_scorer.score_many(_llm_input(tender) for tender in batch)
+                if len(llm_results) != len(batch):
+                    raise RuntimeError("LLM API вернул неполный пакет оценок.")
+                results = [
+                    score_tender_llm(
+                        tender, profile, llm_result=llm_result, now=scoring_now,
+                    )
+                    for tender, llm_result in zip(batch, llm_results)
+                ]
+            else:
+                results = [score_tender(tender, profile, now=scoring_now) for tender in batch]
+
+            for tender, result in zip(batch, results):
+                storage.update_score(
+                    conn,
+                    tender["tender_id"],
+                    result.score,
+                    result.verdict,
+                    result.reasons,
+                    result.labels,
+                )
+                count += 1
+            # Make progress durable after each group of API calls.
+            conn.commit()
     finally:
         conn.close()
 

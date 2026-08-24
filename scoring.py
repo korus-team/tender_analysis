@@ -218,7 +218,8 @@ def score_tender(tender: dict, icp: dict, *, now: datetime | None = None) -> Sco
 
 
 def score_tender_llm(
-        tender: dict, icp: dict, *, scorer=None, now: datetime | None = None
+        tender: dict, icp: dict, *, scorer=None, llm_result=None,
+        now: datetime | None = None
 ) -> ScoreResult:
     """Return the hybrid score: 80% LLM semantic score and 20% rule score.
 
@@ -234,12 +235,13 @@ def score_tender_llm(
     """
     rules_result = score_tender(tender, icp, now=now)
 
-    if scorer is None:
+    if llm_result is None and scorer is None:
         from LLM_scoring import OpenAITenderScorer
 
         scorer = OpenAITenderScorer()
 
-    llm_result = scorer.score(_llm_input(tender))
+    if llm_result is None:
+        llm_result = scorer.score(_llm_input(tender))
     evaluation = llm_result.evaluation
     score = round(LLM_WEIGHT * evaluation.score + RULES_WEIGHT * rules_result.score)
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Iterable, Protocol
@@ -18,6 +19,7 @@ DEFAULT_CONCURRENCY = 5
 MAX_TITLE_LENGTH = 2_000
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 
 class ResponsesAPI(Protocol):
@@ -82,13 +84,19 @@ class OpenAITenderScorer:
     def score(self, title: str) -> ScoringResult:
         """Вернуть оценку одного тендера"""
         clean_title = _validate_title(title)
+        return self._score_clean_title(clean_title)
 
+    def _score_clean_title(self, clean_title: str) -> ScoringResult:
         response = self.client.responses.parse(
             model=self.model,
             reasoning={"effort": "none"},
+            store=False,
             input=[
                 {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": f"Данные тендера:\n{clean_title}"},
+                {
+                    "role": "user",
+                    "content": f"Данные тендера:\n{clean_title}",
+                },
             ],
             text_format=TenderScore,
         )
@@ -98,13 +106,18 @@ class OpenAITenderScorer:
             raise RuntimeError("LLM API не вернул структурированную оценку.")
 
         usage = getattr(response, "usage", None)
-        return ScoringResult(
+        result = ScoringResult(
             title=clean_title,
             evaluation=evaluation,
             model=self.model,
             input_tokens=getattr(usage, "input_tokens", None),
             output_tokens=getattr(usage, "output_tokens", None),
         )
+        logger.info(
+            "llm_tender_scored model=%s input_tokens=%s output_tokens=%s",
+            result.model, result.input_tokens, result.output_tokens,
+        )
+        return result
 
     def score_many(self, titles: Iterable[str]) -> list[ScoringResult]:
         """Параллельная оценка множества тендеров"""
@@ -117,7 +130,7 @@ class OpenAITenderScorer:
             max_workers=workers,
             thread_name_prefix="tender-scoring",
         ) as executor:
-            return list(executor.map(self.score, clean_titles))
+            return list(executor.map(self._score_clean_title, clean_titles))
 
 
 def _validate_title(title: str) -> str:

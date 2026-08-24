@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import re
 from collections.abc import Callable
 from zipfile import BadZipFile
@@ -20,12 +21,15 @@ import directions
 from services import priority_companies
 import storage
 from icp_config import load_icp
-from scoring import score_tender, score_tender_llm
+from scoring import ScoreResult, _llm_input, score_tender, score_tender_llm
 
 
 SOURCE_NAME = "kontur-excel"
 MAX_ROWS = 100_000
 MAX_COLUMNS = 100
+LLM_IMPORT_BATCH_SIZE = 5
+
+logger = logging.getLogger(__name__)
 
 
 class KonturExcelError(ValueError):
@@ -344,12 +348,9 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
     conn = conn or storage.connect()
     now = now or datetime.now()
     llm_scorer = None
-    if use_llm:
-        from LLM_scoring import OpenAITenderScorer
-
-        llm_scorer = OpenAITenderScorer()
     revenue_client = revenue_client or company_size.FnsGirBoRevenueClient()
     kept: list[dict] = []
+    score_candidates: list[tuple[dict, dict, bool, bool, object, ScoreResult | None]] = []
     skipped_small = 0
     skipped_unverified = 0
     kept_government = 0
@@ -364,6 +365,83 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
     llm_scored = 0
     priority_inns = priority_companies.priority_inns(conn)
 
+    def finish_candidate(candidate, result: ScoreResult) -> dict:
+        item, details, is_government, is_priority, revenue_check, _ = candidate
+        item["score"] = result.score
+        item["verdict"] = result.verdict
+        if is_government:
+            item["reasons"] = list(result.reasons)
+            item["labels"] = list(result.labels)
+            details.update({
+                "customer_revenue_rub": None,
+                "customer_turnover_rub": None,
+                "customer_revenue_year": None,
+                "customer_turnover_year": None,
+                "customer_revenue_source": "government-exempt",
+                "customer_turnover_source": "government-exempt",
+                "customer_turnover_status": "not_applicable_government",
+                "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
+            })
+        elif is_priority:
+            item["reasons"] = [
+                "Заказчик входит в список приоритетных компаний",
+                *result.reasons,
+            ]
+            item["labels"] = list(result.labels)
+            details.update({
+                "customer_revenue_rub": None,
+                "customer_turnover_rub": None,
+                "customer_revenue_year": None,
+                "customer_turnover_year": None,
+                "customer_revenue_source": "priority-company-exempt",
+                "customer_turnover_source": "priority-company-exempt",
+                "customer_turnover_status": "not_applicable_priority",
+                "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
+            })
+        else:
+            revenue_reason, revenue_label = _revenue_evidence(revenue_check)
+            item["reasons"] = [revenue_reason, *result.reasons]
+            item["labels"] = [revenue_label, *result.labels]
+            details.update({
+                "customer_inn": revenue_check.inn or details.get("customer_inn"),
+                "customer_revenue_rub": revenue_check.revenue_rub,
+                "customer_turnover_rub": revenue_check.revenue_rub,
+                "customer_revenue_year": revenue_check.report_year,
+                "customer_turnover_year": revenue_check.report_year,
+                "customer_revenue_source": revenue_check.source,
+                "customer_turnover_source": revenue_check.source,
+                "customer_turnover_status": revenue_check.status,
+                "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
+            })
+        item["_details"] = details
+        return item
+
+    saved_new_ids: list[str] = []
+    saved_updated_ids: list[str] = []
+
+    def persist_batch(items: list[dict]) -> None:
+        if not items:
+            return
+        records = [
+            {key: value for key, value in item.items() if key != "_details"}
+            for item in items
+        ]
+        try:
+            saved = storage.save_scored(conn, records, commit=False)
+            imported_at = now.isoformat(timespec="seconds")
+            for item in items:
+                conn.execute(
+                    "UPDATE tenders SET details = ?, enriched_at = ? WHERE tender_id = ?",
+                    (json.dumps(item["_details"], ensure_ascii=False),
+                     imported_at, item["tender_id"]),
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        saved_new_ids.extend(saved.get("new", []))
+        saved_updated_ids.extend(saved.get("updated", []))
+
     def report_progress() -> None:
         if progress_callback is not None:
             progress_callback({
@@ -375,9 +453,12 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
 
     try:
         report_progress()
+        existing_rows = storage.query_tenders(conn, limit=None)
+        existing_by_id = {row["tender_id"]: row for row in existing_rows}
+
         # Чистим ранее загруженные из Контура записи по тому же правилу, даже
         # если их уже нет в свежей выгрузке.
-        for existing in storage.query_tenders(conn, limit=None):
+        for existing in existing_rows:
             if existing.get("source") != SOURCE_NAME:
                 continue
             if _deadline_disposition(existing, now):
@@ -452,73 +533,92 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
             purge_ids.discard(item["tender_id"])
 
             item["days_left"] = _days_left(item.get("deadline"), now)
-            result = (
-                score_tender_llm(item, icp, scorer=llm_scorer, now=now)
-                if llm_scorer is not None
-                else score_tender(item, icp, now=now)
+            existing = existing_by_id.get(item["tender_id"])
+            existing_result = None
+            if existing is not None:
+                existing_reasons, existing_labels = _without_revenue_evidence(
+                    existing.get("reasons"), existing.get("labels"),
+                )
+                existing_result = ScoreResult(
+                    score=int(existing.get("score") or 0),
+                    verdict=existing.get("verdict") or "low",
+                    reasons=existing_reasons,
+                    labels=existing_labels,
+                )
+            score_candidates.append(
+                (item, details, is_government, is_priority, revenue_check, existing_result)
             )
-            if llm_scorer is not None:
-                llm_scored += 1
-            item["score"] = result.score
-            item["verdict"] = result.verdict
-            if is_government:
-                item["reasons"] = list(result.reasons)
-                item["labels"] = list(result.labels)
-                details.update({
-                    "customer_revenue_rub": None,
-                    "customer_turnover_rub": None,
-                    "customer_revenue_year": None,
-                    "customer_turnover_year": None,
-                    "customer_revenue_source": "government-exempt",
-                    "customer_turnover_source": "government-exempt",
-                    "customer_turnover_status": "not_applicable_government",
-                    "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
-                })
-            elif is_priority:
-                item["reasons"] = [
-                    "Заказчик входит в список приоритетных компаний",
-                    *result.reasons,
-                ]
-                item["labels"] = list(result.labels)
-                details.update({
-                    "customer_revenue_rub": None,
-                    "customer_turnover_rub": None,
-                    "customer_revenue_year": None,
-                    "customer_turnover_year": None,
-                    "customer_revenue_source": "priority-company-exempt",
-                    "customer_turnover_source": "priority-company-exempt",
-                    "customer_turnover_status": "not_applicable_priority",
-                    "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
-                })
-            else:
-                revenue_reason, revenue_label = _revenue_evidence(revenue_check)
-                item["reasons"] = [revenue_reason, *result.reasons]
-                item["labels"] = [revenue_label, *result.labels]
-                details.update({
-                    "customer_inn": revenue_check.inn or details.get("customer_inn"),
-                    "customer_revenue_rub": revenue_check.revenue_rub,
-                    "customer_turnover_rub": revenue_check.revenue_rub,
-                    "customer_revenue_year": revenue_check.report_year,
-                    "customer_turnover_year": revenue_check.report_year,
-                    "customer_revenue_source": revenue_check.source,
-                    "customer_turnover_source": revenue_check.source,
-                    "customer_turnover_status": revenue_check.status,
-                    "customer_revenue_checked_at": now.isoformat(timespec="seconds"),
-                })
-            item["_details"] = details
+
+        existing_candidates = [
+            candidate for candidate in score_candidates if candidate[-1] is not None
+        ]
+        new_candidates = [
+            candidate for candidate in score_candidates if candidate[-1] is None
+        ]
+
+        pending_without_llm: list[dict] = []
+        for candidate in existing_candidates:
+            item = finish_candidate(candidate, candidate[-1])
             kept.append(item)
+            pending_without_llm.append(item)
             processed += 1
             report_progress()
 
+        if use_llm and new_candidates:
+            from LLM_scoring import OpenAITenderScorer
+
+            llm_scorer = OpenAITenderScorer()
+            for start in range(0, len(new_candidates), LLM_IMPORT_BATCH_SIZE):
+                batch = new_candidates[start:start + LLM_IMPORT_BATCH_SIZE]
+                batch_number = start // LLM_IMPORT_BATCH_SIZE + 1
+                logger.info(
+                    "llm_import_batch_started batch=%s size=%s",
+                    batch_number, len(batch),
+                )
+                try:
+                    llm_results = llm_scorer.score_many(
+                        _llm_input(item) for item, *_ in batch
+                    )
+                    if len(llm_results) != len(batch):
+                        raise RuntimeError(
+                            "LLM API вернул неполный пакет оценок."
+                        )
+                except Exception:
+                    logger.exception(
+                        "llm_import_batch_failed batch=%s size=%s",
+                        batch_number, len(batch),
+                    )
+                    raise
+
+                batch_items = []
+                for candidate, llm_result in zip(batch, llm_results):
+                    item = candidate[0]
+                    result = score_tender_llm(
+                        item, icp, llm_result=llm_result, now=now,
+                    )
+                    finished_item = finish_candidate(candidate, result)
+                    kept.append(finished_item)
+                    batch_items.append(finished_item)
+                    llm_scored += 1
+                    processed += 1
+                    report_progress()
+                persist_batch(batch_items)
+                logger.info(
+                    "llm_import_batch_committed batch=%s size=%s",
+                    batch_number, len(batch_items),
+                )
+        elif not use_llm:
+            for candidate in new_candidates:
+                result = score_tender(candidate[0], icp, now=now)
+                item = finish_candidate(candidate, result)
+                kept.append(item)
+                pending_without_llm.append(item)
+                processed += 1
+                report_progress()
+
+        persist_batch(pending_without_llm)
+
         removed = storage.delete_tenders(conn, purge_ids, commit=False)
-        to_save = [{key: val for key, val in item.items() if key != "_details"} for item in kept]
-        saved = storage.save_scored(conn, to_save) if to_save else {"new": [], "updated": []}
-        imported_at = now.isoformat(timespec="seconds")
-        for item in kept:
-            conn.execute(
-                "UPDATE tenders SET details = ?, enriched_at = ? WHERE tender_id = ?",
-                (json.dumps(item["_details"], ensure_ascii=False), imported_at, item["tender_id"]),
-            )
         conn.commit()
         return {
             "sheet": parsed["sheet"],
@@ -536,9 +636,9 @@ def import_kontur_xlsx(source, conn=None, icp: dict | None = None,
             "skipped_short_non_license": skipped_short,
             "removed_by_deadline": removed,
             "kept": len(kept),
-            "new": len(saved.get("new", [])),
-            "new_ids": list(saved.get("new", [])),
-            "updated": len(saved.get("updated", [])),
+            "new": len(saved_new_ids),
+            "new_ids": list(saved_new_ids),
+            "updated": len(saved_updated_ids),
         }
     finally:
         if own_connection:
