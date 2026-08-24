@@ -17,7 +17,7 @@ from .schemas import TenderScore
 
 DEFAULT_CONCURRENCY = 5
 MAX_TITLE_LENGTH = 2_000
-PROMPT_CACHE_KEY = "tender-scoring-positive-examples-v2"
+PROMPT_CACHE_KEY = "tender-scoring-positive-examples-v3"
 PROMPT_CACHE_OPTIONS = {"mode": "explicit"}
 
 load_dotenv()

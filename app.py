@@ -39,9 +39,11 @@ from document_analysis import (DocumentAnalysisError, analyze as analyze_documen
                                document_upload_dir, persist_uploads, read_uploads)
 from services.document_requests import build_document_request
 from observability.logging_config import configure_logging
+from observability.user_actions import configure_user_action_logging
 
 configure_logging()
 logger = logging.getLogger(__name__)
+user_action_logger = configure_user_action_logging()
 
 app = Flask(__name__)
 app.secret_key = "dar-tender-assistant-local"
@@ -49,6 +51,17 @@ app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
 
 DEFAULT_USER_COLOR = "#DABDFF"
 _USER_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+
+
+def _log_user_action(action: str, tender_id: str) -> None:
+    """Записать безопасный минимум для аудита действий с тендерами."""
+    user_action_logger.info(
+        "action=%s user_id=%s username=%r tender_id=%r",
+        action,
+        session.get("user_id"),
+        session.get("username") or "",
+        tender_id,
+    )
 
 # --- пороги и настройки отображения -----------------------------------------
 RELEVANT_MIN = 60      # «подходит нашей компании»
@@ -1217,6 +1230,7 @@ def tender(tender_id):
         "/tasks": "Назад к задачам",
         "/irrelevant": "Назад к нерелевантным",
     }.get(norm, "Назад к списку")
+    _log_user_action("tender_opened", tender_id)
     return render_template("tender.html", active="tenders", t=t, back_url=back_url,
                            back_label=back_label, override=override, eff_rel=eff_rel,
                            not_pursued=not_pursued,
@@ -1706,6 +1720,8 @@ def toggle_favorite(tender_id):
             (uid, session.get("username"), tender_id, (t.get("title") if t else None), now))
     conn.commit()
     conn.close()
+    if not mine:
+        _log_user_action("favorite_added", tender_id)
     if request.accept_mimetypes.best == "application/json":
         return jsonify(ok=True, favorite=not bool(mine))
     return redirect(request.referrer or url_for("tenders"))
@@ -1716,6 +1732,13 @@ def set_relevance(tender_id):
     """Ручная корректировка релевантности (обратная связь по подбору)."""
     value = request.form.get("value")
     conn = storage.connect()
+    previous_meta = conn.execute(
+        "SELECT relevance FROM tender_meta WHERE tender_id = ?", (tender_id,)
+    ).fetchone()
+    tender_row = storage.get_tender(conn, tender_id)
+    previous_relevance = previous_meta["relevance"] if previous_meta else None
+    previous_map = ({tender_id: previous_relevance} if previous_relevance else {})
+    was_relevant = bool(tender_row and _is_relevant_eff(tender_row, previous_map))
     conn.execute("INSERT OR IGNORE INTO tender_meta (tender_id) VALUES (?)", (tender_id,))
     if value in ("relevant", "irrelevant"):
         conn.execute("UPDATE tender_meta SET relevance = ? WHERE tender_id = ?",
@@ -1726,6 +1749,8 @@ def set_relevance(tender_id):
         flash("Возвращена автоматическая оценка")
     conn.commit()
     conn.close()
+    if value == "relevant" and tender_row and not was_relevant:
+        _log_user_action("relevance_promoted", tender_id)
     return redirect(request.referrer or url_for("tenders"))
 
 
