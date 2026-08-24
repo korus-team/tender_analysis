@@ -1815,17 +1815,25 @@ def import_kontur():
                 notification_conn.close()
             if current_settings["n_new_email"] == "1":
                 notification_service.dispatch_email_outbox()
-            history_conn = storage.connect()
             try:
-                _prune_upload_history(history_conn)
-                history_conn.execute(
-                    "INSERT INTO upload_history "
-                    "(user_id, username, uploaded_at, filename, sheet_name) VALUES (?,?,?,?,?)",
-                    (uploader_id, uploader_name, uploaded_at, filename, summary.get("sheet")),
+                history_conn = storage.connect()
+                try:
+                    _prune_upload_history(history_conn)
+                    history_conn.execute(
+                        "INSERT INTO upload_history "
+                        "(user_id, username, uploaded_at, filename, sheet_name) "
+                        "VALUES (?,?,?,?,?)",
+                        (uploader_id, uploader_name, uploaded_at, filename,
+                         summary.get("sheet")),
+                    )
+                    history_conn.commit()
+                finally:
+                    history_conn.close()
+            except Exception:  # noqa: BLE001
+                logger.exception(
+                    "upload_history_record_failed job_id=%s filename=%s",
+                    job_id, filename,
                 )
-                history_conn.commit()
-            finally:
-                history_conn.close()
             with _kontur_import_lock:
                 _kontur_import_jobs[job_id].update(status="complete", summary=summary)
             logger.info(
