@@ -17,6 +17,8 @@ from .schemas import TenderScore
 
 DEFAULT_CONCURRENCY = 5
 MAX_TITLE_LENGTH = 2_000
+PROMPT_CACHE_KEY = "tender-scoring-positive-examples-v2"
+PROMPT_CACHE_OPTIONS = {"mode": "explicit"}
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -91,8 +93,19 @@ class OpenAITenderScorer:
             model=self.model,
             reasoning={"effort": "none"},
             store=False,
+            prompt_cache_key=PROMPT_CACHE_KEY,
+            extra_body={"prompt_cache_options": PROMPT_CACHE_OPTIONS},
             input=[
-                {"role": "system", "content": self.system_prompt},
+                {
+                    "role": "developer",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": self.system_prompt,
+                            "prompt_cache_breakpoint": {"mode": "explicit"},
+                        }
+                    ],
+                },
                 {
                     "role": "user",
                     "content": f"Данные тендера:\n{clean_title}",
@@ -106,6 +119,8 @@ class OpenAITenderScorer:
             raise RuntimeError("LLM API не вернул структурированную оценку.")
 
         usage = getattr(response, "usage", None)
+        input_token_details = getattr(usage, "input_tokens_details", None)
+        cached_input_tokens = getattr(input_token_details, "cached_tokens", None)
         result = ScoringResult(
             title=clean_title,
             evaluation=evaluation,
@@ -114,8 +129,10 @@ class OpenAITenderScorer:
             output_tokens=getattr(usage, "output_tokens", None),
         )
         logger.info(
-            "llm_tender_scored model=%s input_tokens=%s output_tokens=%s",
-            result.model, result.input_tokens, result.output_tokens,
+            "llm_tender_scored model=%s input_tokens=%s cached_input_tokens=%s "
+            "output_tokens=%s",
+            result.model, result.input_tokens, cached_input_tokens,
+            result.output_tokens,
         )
         return result
 
