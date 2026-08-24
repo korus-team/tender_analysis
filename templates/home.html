@@ -31,10 +31,11 @@
     <label class="search-box"><svg class="icon"><use href="#i-search"/></svg><input name="q" value="{{ q }}" placeholder="Поиск по ключевым словам, номеру или заказчику..."></label>
     <button class="btn-filter" type="button" id="filtBtn"><svg class="icon"><use href="#i-filter"/></svg>Фильтры</button>
   </div>
-  <div class="filters-panel{% if not (direction or ptype) %} filters-panel--hidden{% endif %}" id="filtPanel">
-    <select class="chip-select" name="direction" onchange="document.getElementById('searchForm').submit()">
-      <option value="">Тип закупки: все</option>
-      {% for k in type_keys %}<option value="{{ k }}" {{ 'selected' if direction==k }}>{{ dir_name(k) }}</option>{% endfor %}
+  <div class="filters-panel{% if not (special or ptype) %} filters-panel--hidden{% endif %}" id="filtPanel">
+    <select class="chip-select" name="special" onchange="document.getElementById('searchForm').submit()">
+      <option value="">Все тендеры</option>
+      <option value="priority" {{ 'selected' if special=='priority' }}>Приоритетные компании</option>
+      <option value="license" {{ 'selected' if special=='license' }}>Лицензионные</option>
     </select>
     <select class="chip-select" name="ptype" onchange="document.getElementById('searchForm').submit()">
       <option value="">Коммерческие и государственные</option>
@@ -52,26 +53,19 @@
         <option value="company" {{ 'selected' if sort=='company' }}>По компании</option>
       </select>
     </div>
-    <div class="sort-unit">Показать:
-      <select class="chip-select" name="show" onchange="document.getElementById('searchForm').submit()">
-        <option value="all" {{ 'selected' if show=='all' }}>Все тендеры</option>
-        <option value="priority" {{ 'selected' if show=='priority' }}>Приоритетные компании</option>
-        <option value="license" {{ 'selected' if show=='license' }}>Лицензионные</option>
-        <option value="gov" {{ 'selected' if show=='gov' }}>Государственные</option>
-        <option value="com" {{ 'selected' if show=='com' }}>Коммерческие</option>
-      </select>
-    </div>
   </div>
 </form>
 
 {% if tenders %}
 {% for t in tenders %}
-<div class="tcard{% if taken_by.get(t.tender_id) %} tcard--taken{% endif %}">
+{% set owner = taken_by.get(t.tender_id) %}
+<div class="tcard{% if owner %} tcard--taken{% endif %}"{% if owner %} style="--owner-color:{{ owner.color }};--owner-text:{{ owner.text_color }}"{% endif %}>
   <div class="tcard-main">
     <div class="ttags">
       {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
       {% if t.ptype=='gov' %}<span class="ttag ttag-gov2"><span class="type-full">Государственный</span><span class="type-mobile">Гос.</span></span>{% elif t.ptype=='com' %}<span class="ttag ttag-com2"><span class="type-full">Коммерческий</span><span class="type-mobile">Коммерц.</span></span>{% endif %}
       {% if t.is_license %}<span class="ttag ttag-license2">Лицензионный</span>{% endif %}
+      {% if owner %}<span class="ttag ttag-taken">Взято: {{ owner.username }}</span>{% endif %}
     </div>
     <div class="tcard-title"><a href="{{ url_for('tender', tender_id=t.tender_id, ret=request.full_path) }}">{{ t.title }}</a></div>
     <div class="tcard-sub">{{ t.customer or 'Заказчик скрыт площадкой' }}</div>
@@ -102,9 +96,9 @@
 {% endfor %}
 {% if total_pages > 1 %}
 <div class="win-row" style="margin-top:20px;justify-content:center">
-  {% if page > 1 %}<a class="win-chip" href="{{ url_for('home', q=q, direction=direction, ptype=ptype, sort=sort, show=show, page=page-1) }}">← Назад</a>{% endif %}
+  {% if page > 1 %}<a class="win-chip" href="{{ url_for('home', q=q, special=special, ptype=ptype, sort=sort, page=page-1) }}">← Назад</a>{% endif %}
   <span class="win-chip on">Стр. {{ page }} из {{ total_pages }}</span>
-  {% if page < total_pages %}<a class="win-chip" href="{{ url_for('home', q=q, direction=direction, ptype=ptype, sort=sort, show=show, page=page+1) }}">Вперёд →</a>{% endif %}
+  {% if page < total_pages %}<a class="win-chip" href="{{ url_for('home', q=q, special=special, ptype=ptype, sort=sort, page=page+1) }}">Вперёд →</a>{% endif %}
 </div>
 {% endif %}
 {% else %}

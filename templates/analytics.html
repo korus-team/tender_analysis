@@ -20,8 +20,6 @@
   {% endfor %}
 </div>
 
-{% set analytics_palette = ['#F3DFFF', '#FFE6DF', '#D7FFD8', '#E4F4FB'] %}
-
 <div class="analytics-main-grid">
 
   <div class="an-card">
@@ -42,10 +40,12 @@
             cy="105"
             r="80"
             fill="none"
-            stroke="{{ analytics_palette[loop.index0] }}"
+            stroke="{{ s.color }}"
             stroke-width="26"
             stroke-dasharray="{{ s.dash }}"
             stroke-dashoffset="{{ s.offset }}"
+            data-category="{{ s.key }}"
+            data-count="{{ s.count }}"
           />
           {% endfor %}
         </g>
@@ -59,17 +59,9 @@
 
     <div class="legend">
       {% for l in legend %}
-      <div class="legend-item">
-        {% if loop.index0 == 0 %}
-        <span class="dot dot-commercial"></span>
-        {% elif loop.index0 == 1 %}
-        <span class="dot dot-commercial-license"></span>
-        {% elif loop.index0 == 2 %}
-        <span class="dot dot-gov-license"></span>
-        {% else %}
-        <span class="dot dot-gov"></span>
-        {% endif %}
-        <span>{{ l.name }}{% if l.count %} · {{ l.count }}{% endif %}</span>
+      <div class="legend-item" data-category="{{ l.key }}" data-count="{{ l.count }}">
+        <span class="dot" style="background:{{ l.color }}"></span>
+        <span>{{ l.name }} · {{ l.count }}</span>
       </div>
       {% endfor %}
 
@@ -150,11 +142,6 @@
   width:18px;
   height:18px;
 }
-
-.dot-commercial{background:#F3DFFF}
-.dot-commercial-license{background:#FFE6DF}
-.dot-gov-license{background:#D7FFD8}
-.dot-gov{background:#E4F4FB}
 
 .analytics-empty{
   margin-top:4px;

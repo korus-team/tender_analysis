@@ -23,11 +23,12 @@
 
 {% if tenders %}
 {% for t in tenders %}
-<div class="tcard{% if current_user and current_user.username in t.savers %} tcard--taken{% endif %}">
+{% set owner = t.saver_profiles[0] if t.saver_profiles else none %}
+<div class="tcard{% if owner %} tcard--taken{% endif %}"{% if owner %} style="--owner-color:{{ owner.color }};--owner-text:{{ owner.text_color }}"{% endif %}>
   <div class="tcard-main">
     <div class="ttags">
       {% if t.stage %}<span class="ttag ttag-{{ t.stage }}">{{ t.stage_label }}</span>{% endif %}
-      {% for s in t.savers %}<span class="ttag ttag-metka">{{ s }}</span>{% endfor %}
+      {% for saver in t.saver_profiles %}<span class="ttag ttag-metka" style="--owner-color:{{ saver.color }};--owner-text:{{ saver.text_color }}">{{ saver.username }}</span>{% endfor %}
       {% if t.expired %}<span class="ttag ttag-expired">Срок подачи прошёл</span>{% endif %}
     </div>
     <div class="tcard-title"><a href="{{ url_for('tender', tender_id=t.tender_id, ret='/favorites') }}">{{ t.title }}</a></div>
@@ -86,7 +87,7 @@
     top:0 !important;
     bottom:0 !important;
     width:24px !important;
-    background:#DABDFF !important;
+    background:var(--owner-color,#DABDFF) !important;
   }
 
   /* Этап и сердце — строго одна горизонтальная строка */

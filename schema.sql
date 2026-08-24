@@ -71,7 +71,8 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,              -- хэш пароля (werkzeug), не сам пароль
     created_at    TEXT,
     avatar        BLOB,                       -- фото профиля
-    avatar_mime   TEXT                        -- MIME-тип фото
+    avatar_mime   TEXT,                       -- MIME-тип фото
+    label_color   TEXT NOT NULL DEFAULT '#DABDFF' -- цвет пользовательских меток
 );
 
 

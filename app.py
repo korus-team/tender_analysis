@@ -31,7 +31,7 @@ import directions
 import company_size
 from services import priority_companies
 from services.rescoring import rescore_all
-from scoring import theme_score
+from scoring import deadline_time_label, theme_score
 from icp_config import load_icp, save_icp
 from integrations.kontur_excel import KonturExcelError, import_kontur_xlsx
 import notification_service
@@ -46,6 +46,9 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.secret_key = "dar-tender-assistant-local"
 app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
+
+DEFAULT_USER_COLOR = "#DABDFF"
+_USER_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 
 # --- пороги и настройки отображения -----------------------------------------
 RELEVANT_MIN = 60      # «подходит нашей компании»
@@ -279,6 +282,18 @@ def _annotate(tenders):
                         if deadline_dt is not None else None)
         t["deadline_reminder"] = (seconds_left is not None
                                   and 0 <= seconds_left <= 3 * 24 * 3600)
+        if days is not None and seconds_left is not None and seconds_left >= 0:
+            current_deadline = deadline_time_label(dl, days, now)
+            refreshed_reasons = []
+            for reason in t["reasons"]:
+                if isinstance(reason, str):
+                    reason = re.sub(
+                        r"^До дедлайна\s+\d+\s+дн\.",
+                        f"До дедлайна {current_deadline}",
+                        reason,
+                    )
+                refreshed_reasons.append(reason)
+            t["reasons"] = refreshed_reasons
         t["urgency"] = _urgency(days)
         # тип закупки (предметный тег)
         t["direction"] = directions.classify(t)
@@ -391,12 +406,17 @@ def _ensure_auth_tables():
         "password_hash TEXT NOT NULL, "
         "created_at TEXT, "
         "avatar BLOB, "
-        "avatar_mime TEXT)")
+        "avatar_mime TEXT, "
+        "label_color TEXT NOT NULL DEFAULT '#DABDFF')")
     user_columns = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
     if "avatar" not in user_columns:
         conn.execute("ALTER TABLE users ADD COLUMN avatar BLOB")
     if "avatar_mime" not in user_columns:
         conn.execute("ALTER TABLE users ADD COLUMN avatar_mime TEXT")
+    if "label_color" not in user_columns:
+        conn.execute(
+            "ALTER TABLE users ADD COLUMN label_color TEXT NOT NULL DEFAULT '#DABDFF'"
+        )
     conn.execute(
         "CREATE TABLE IF NOT EXISTS user_favorites ("
         "user_id INTEGER NOT NULL, "
@@ -424,23 +444,52 @@ def current_user():
     uid = session.get("user_id")
     if not uid:
         return None
-    if "has_avatar" not in session:
-        conn = storage.connect()
-        row = conn.execute(
-            "SELECT username, avatar_mime FROM users WHERE id = ?", (uid,)
-        ).fetchone()
-        conn.close()
-        if not row:
-            session.clear()
-            return None
-        session["username"] = row["username"]
-        session["has_avatar"] = bool(row["avatar_mime"])
+    conn = storage.connect()
+    row = conn.execute(
+        "SELECT username, avatar_mime, label_color FROM users WHERE id = ?", (uid,)
+    ).fetchone()
+    conn.close()
+    if not row:
+        session.clear()
+        return None
+    color = _normalize_user_color(row["label_color"])
+    session["username"] = row["username"]
+    session["has_avatar"] = bool(row["avatar_mime"])
+    session["label_color"] = color
     has_avatar = bool(session.get("has_avatar"))
     return {
         "id": uid,
         "username": session.get("username", ""),
         "has_avatar": has_avatar,
         "avatar_url": url_for("user_avatar", user_id=uid) if has_avatar else None,
+        "label_color": color,
+        "label_text_color": _contrast_text_color(color),
+    }
+
+
+def _normalize_user_color(value) -> str:
+    color = str(value or "").strip()
+    return color.upper() if _USER_COLOR_RE.fullmatch(color) else DEFAULT_USER_COLOR
+
+
+def _contrast_text_color(color: str) -> str:
+    """Выбирает более контрастный текст по относительной яркости WCAG."""
+    color = _normalize_user_color(color)
+    channels = [int(color[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    linear = [
+        value / 12.92 if value <= 0.04045 else ((value + 0.055) / 1.055) ** 2.4
+        for value in channels
+    ]
+    luminance = linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722
+    return "#191C1F" if luminance >= 0.20 else "#FFFFFF"
+
+
+def _owner_view(username, color) -> dict:
+    normalized = _normalize_user_color(color)
+    return {
+        "username": username,
+        "color": normalized,
+        "text_color": _contrast_text_color(normalized),
     }
 
 
@@ -731,9 +780,13 @@ def inject_notifications():
             "ORDER BY id DESC LIMIT 40", (uid,)
         ).fetchall()
         my_favs = _my_fav_ids(conn, uid)
-        taken_by = {r["tender_id"]: r["username"] for r in conn.execute(
-            "SELECT f.tender_id, u.username FROM user_favorites f "
-            "JOIN users u ON u.id = f.user_id")}
+        taken_by = {
+            r["tender_id"]: _owner_view(r["username"], r["label_color"])
+            for r in conn.execute(
+                "SELECT f.tender_id, u.username, u.label_color "
+                "FROM user_favorites f JOIN users u ON u.id = f.user_id"
+            )
+        }
         conn.close()
         notes = []
         for e in favorite_events:
@@ -781,6 +834,7 @@ def login():
             session["user_id"] = row["id"]
             session["username"] = row["username"]
             session["has_avatar"] = bool(row["avatar_mime"])
+            session["label_color"] = _normalize_user_color(row["label_color"])
             return redirect(url_for("home"))
         flash("Неверный логин или пароль", "err")
         return redirect(url_for("login"))
@@ -811,6 +865,7 @@ def register():
         session["user_id"] = row["id"]
         session["username"] = row["username"]
         session["has_avatar"] = bool(row["avatar_mime"])
+        session["label_color"] = _normalize_user_color(row["label_color"])
         return redirect(url_for("home"))
     return render_template("register.html")
 
@@ -827,12 +882,12 @@ def logout():
 @app.route("/")
 def home():
     conn = storage.connect()
-    direction = request.args.get("direction") or None
     ptype = request.args.get("ptype") or None
+    special = request.args.get("special") or None
+    if special not in (None, "priority", "license"):
+        special = None
     q = (request.args.get("q") or "").strip()
     sort = request.args.get("sort") or "deadline"
-    show = request.args.get("show") or "all"
-    show_filters = request.args.get("filters") == "1"
     page = request.args.get("page", type=int) or 1
 
     rel_map, not_pursued = _load_meta(conn)
@@ -854,22 +909,20 @@ def home():
 
     # фильтры
     view = rows
-    if direction:
-        view = [t for t in view if t.get("direction") == direction]
     if ptype in ("gov", "com"):
         view = [t for t in view if t.get("ptype") == ptype]
     if q:
-        ql = q.lower()
-        view = [t for t in view if ql in ((t.get("title") or "") + " "
-                + (t.get("subject") or "") + " " + (t.get("customer") or "")).lower()]
-    if show == "priority":
+        query = q.casefold()
+        view = [
+            t for t in view
+            if query in " ".join(str(t.get(field) or "") for field in (
+                "title", "subject", "number", "customer"
+            )).casefold()
+        ]
+    if special == "priority":
         view = [t for t in view if t.get("is_priority")]
-    elif show == "license":
+    elif special == "license":
         view = [t for t in view if t.get("is_license")]
-    elif show == "gov":
-        view = [t for t in view if t.get("ptype") == "gov"]
-    elif show == "com":
-        view = [t for t in view if t.get("ptype") == "com"]
 
     # сортировка (ai = рекомендации ИИ: пока по баллу; deadline; price; company)
     if sort == "deadline":
@@ -890,8 +943,7 @@ def home():
         "home.html", active="home", now=datetime.now().strftime("%d.%m %H:%M"),
         stat_total=stat_total, stat_top=stat_top, stat_lic=stat_lic,
         stat_priority=stat_priority, tenders=page_rows,
-        direction=direction, ptype=ptype, q=q, sort=sort, show=show, show_filters=show_filters,
-        type_keys=directions.all_keys(include_other=False), dir_name=directions.name_of,
+        ptype=ptype, special=special, q=q, sort=sort,
         total_found=total_found, page=page, total_pages=total_pages)
 
 
@@ -1160,9 +1212,14 @@ def favorites():
     conn = storage.connect()
     stages = _load_stages(conn)
     saves = {}
-    for r in conn.execute("SELECT f.tender_id, u.username FROM user_favorites f "
-                          "JOIN users u ON u.id = f.user_id ORDER BY f.created_at"):
+    saver_profiles = {}
+    for r in conn.execute(
+            "SELECT f.tender_id, u.username, u.label_color FROM user_favorites f "
+            "JOIN users u ON u.id = f.user_id ORDER BY f.created_at"):
         saves.setdefault(r["tender_id"], []).append(r["username"])
+        saver_profiles.setdefault(r["tender_id"], []).append(
+            _owner_view(r["username"], r["label_color"])
+        )
     employees = sorted({u for names in saves.values() for u in names})
     raw = []
     for tid in saves:
@@ -1174,6 +1231,7 @@ def favorites():
     rows = _mark_priority(_annotate(raw), pindex)
     for t in rows:
         t["savers"] = saves.get(t["tender_id"], [])
+        t["saver_profiles"] = saver_profiles.get(t["tender_id"], [])
         t["stage"] = stages.get(t["tender_id"])
         t["stage_label"] = STAGE_LABELS.get(t["stage"])
         t["expired"] = t.get("days_left") is not None and t["days_left"] < 0
@@ -1221,8 +1279,12 @@ def analytics():
             B["com_lic" if lic else "com"] += 1
         elif pt == "gov":
             B["gov_lic" if lic else "gov"] += 1
-    legend = [("com", "Коммерческие", "#C3B4EF"), ("com_lic", "Коммерческие лицензионные", "#EFA9C6"),
-              ("gov_lic", "Государственные лицензионные", "#9BD9A5"), ("gov", "Государственные", "#A9C7EF")]
+    legend = [
+        ("com", "Коммерческие", "#8F5BE8"),
+        ("com_lic", "Коммерческие лицензионные", "#F05B9D"),
+        ("gov_lic", "Государственные лицензионные", "#35B85A"),
+        ("gov", "Государственные", "#3F82D7"),
+    ]
     typed_total = sum(B.values())
     circ = 2 * math.pi * 80
     segs, cum = [], 0.0
@@ -1230,9 +1292,16 @@ def analytics():
         cnt = B[key]
         if typed_total and cnt:
             seg = (cnt / typed_total) * circ
-            segs.append({"color": color, "dash": f"{seg:.1f} {circ - seg:.1f}", "offset": f"{-cum:.1f}"})
+            segs.append({
+                "key": key, "name": name, "count": cnt, "color": color,
+                "dash": f"{seg:.1f} {circ - seg:.1f}",
+                "offset": f"{-cum:.1f}",
+            })
             cum += seg
-    legend_rows = [{"name": name, "color": color, "count": B[key]} for key, name, color in legend]
+    legend_rows = [
+        {"key": key, "name": name, "color": color, "count": B[key]}
+        for key, name, color in legend
+    ]
 
     irr_total = len(irrelevant_rows)
     irr_passed = sum(1 for r in irrelevant_rows
@@ -1275,14 +1344,18 @@ def profile():
 def employees():
     """Сотрудники компании и тендеры, которые они забрали в избранное."""
     conn = storage.connect()
-    users = conn.execute("SELECT id, username FROM users ORDER BY username").fetchall()
+    users = conn.execute(
+        "SELECT id, username, label_color FROM users ORDER BY username"
+    ).fetchall()
     data = []
     for u in users:
         rows = conn.execute(
             "SELECT t.* FROM tenders t JOIN user_favorites f ON f.tender_id = t.tender_id "
             "WHERE f.user_id = ? ORDER BY t.score DESC, f.created_at DESC", (u["id"],)).fetchall()
         favs = _annotate([storage._row_to_dict(r) for r in rows])
+        owner = _owner_view(u["username"], u["label_color"])
         data.append({"id": u["id"], "username": u["username"],
+                     "color": owner["color"], "text_color": owner["text_color"],
                      "is_me": u["id"] == session.get("user_id"), "favs": favs})
     conn.close()
     return render_template("employees.html", active="profile", subtab="employees",
@@ -1357,13 +1430,18 @@ def settings_contacts():
 
 @app.route("/settings/account", methods=["POST"])
 def settings_account():
-    """Обновляет фото, логин и пароль текущего пользователя."""
+    """Обновляет фото, логин, пароль и цвет меток текущего пользователя."""
     uid = session["user_id"]
     username = (request.form.get("username") or "").strip()
     current_password = request.form.get("current_password") or ""
     new_password = request.form.get("new_password") or ""
     password_confirm = request.form.get("password_confirm") or ""
     remove_avatar = request.form.get("remove_avatar") == "1"
+    raw_label_color = (request.form.get("label_color") or "").strip()
+    if not _USER_COLOR_RE.fullmatch(raw_label_color):
+        flash("Выберите корректный цвет меток", "err")
+        return redirect(url_for("settings") + "#profile")
+    label_color = raw_label_color.upper()
     upload = request.files.get("avatar")
 
     conn = storage.connect()
@@ -1416,8 +1494,8 @@ def settings_account():
             return redirect(url_for("settings") + "#profile")
         avatar_changed = True
 
-    updates = ["username = ?"]
-    values = [username]
+    updates = ["username = ?", "label_color = ?"]
+    values = [username, label_color]
     if password_changed:
         updates.append("password_hash = ?")
         values.append(generate_password_hash(new_password))
@@ -1433,8 +1511,31 @@ def settings_account():
     conn.close()
     session["username"] = saved["username"]
     session["has_avatar"] = bool(saved["avatar_mime"])
+    session["label_color"] = label_color
     flash("Данные учётной записи сохранены")
     return redirect(url_for("settings") + "#profile")
+
+
+@app.route("/settings/color", methods=["POST"])
+def settings_color():
+    """Сохраняет цвет меток сразу после выбора в профиле."""
+    raw_color = (request.form.get("label_color") or "").strip()
+    if not _USER_COLOR_RE.fullmatch(raw_color):
+        return jsonify(ok=False, error="Некорректный формат цвета"), 400
+    color = raw_color.upper()
+    uid = session["user_id"]
+    conn = storage.connect()
+    updated = conn.execute(
+        "UPDATE users SET label_color = ? WHERE id = ?", (color, uid)
+    ).rowcount
+    conn.commit()
+    conn.close()
+    if not updated:
+        session.clear()
+        return jsonify(ok=False, error="Пользователь не найден"), 404
+    session["label_color"] = color
+    logger.info("user_label_color_updated user_id=%s", uid)
+    return jsonify(ok=True, color=color, text_color=_contrast_text_color(color))
 
 
 @app.route("/settings/avatar", methods=["POST"])
