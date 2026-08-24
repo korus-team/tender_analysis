@@ -56,7 +56,7 @@
                   <label class="profile-color-picker" for="userLabelColor" title="Выбрать цвет">
                     <input id="userLabelColor" class="profile-color-input" type="color" name="label_color" value="{{ current_user.label_color if current_user else '#DABDFF' }}" aria-label="Цвет ваших меток">
                   </label>
-                  <div class="profile-color-preview" id="profileColorPreview" style="--owner-color:{{ current_user.label_color if current_user else '#DABDFF' }};--owner-text:{{ current_user.label_text_color if current_user else '#191C1F' }}">
+                  <div class="profile-color-preview" id="profileColorPreview" data-owner-color="{{ current_user.label_color if current_user else '#DABDFF' }}" data-owner-text="{{ current_user.label_text_color if current_user else '#191C1F' }}">
                     <span class="profile-color-preview__stripe"></span>
                     <span class="profile-color-preview__tag">Взято: {{ current_user.username if current_user else 'user' }}</span>
                   </div>
@@ -68,20 +68,7 @@
         </div>
 
         <div class="profile-right">
-          <div class="settings-card gold">
-            <h3>Контактные данные</h3>
-
-            <div class="settings-field" style="margin-top:18px">
-              <label>Электронная почта</label>
-              <input value="{{ s.email }}" readonly>
-            </div>
-
-            <div class="extra-contacts" id="extraContacts"></div>
-            <input type="hidden" name="extra_contacts" id="extraContactsValue" value="{{ s.extra_contacts }}">
-            <button class="settings-add-btn" type="button" data-add-contact="any"><span class="plus">＋</span>Добавить телефон или почту</button>
-          </div>
-
-          <div class="settings-card blue">
+<div class="settings-card blue">
             <h3>Смена пароля</h3>
             <div class="card-sub">Пароль должен содержать не менее 4 символов.</div>
 
@@ -416,5 +403,65 @@ if(userLabelColor){
   }
 }
 </style>
+
+
+<style>
+/* =================== SETTINGS PROFILE LAYOUT FIX =================== */
+.profile-grid{
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+  gap:22px !important;
+  align-items:stretch !important;
+}
+.profile-grid > .settings-card.pink,
+.profile-grid > .profile-right{
+  width:100% !important;
+  min-width:0 !important;
+}
+.profile-right{
+  display:block !important;
+  height:100% !important;
+}
+.profile-right > .settings-card.blue{
+  width:100% !important;
+  height:100% !important;
+  box-sizing:border-box !important;
+}
+.profile-details{min-width:0 !important}
+.profile-color-field{min-width:0 !important;max-width:100% !important}
+.profile-color-control{
+  width:100% !important;
+  max-width:100% !important;
+  min-width:0 !important;
+  gap:12px !important;
+}
+.profile-color-preview{
+  flex:1 1 auto !important;
+  width:auto !important;
+  min-width:0 !important;
+  max-width:100% !important;
+  box-sizing:border-box !important;
+}
+.profile-color-preview__tag{
+  max-width:100% !important;
+  white-space:nowrap;
+}
+@media(max-width:1050px){
+  .profile-grid{grid-template-columns:1fr !important}
+}
+@media(max-width:768px){
+  .profile-color-control{flex-direction:column !important;align-items:center !important}
+  .profile-color-preview{width:100% !important;max-width:300px !important;flex:none !important}
+}
+</style>
+
+
+<script>
+(function(){
+  var preview = document.getElementById('profileColorPreview');
+  if(!preview) return;
+  preview.style.setProperty('--owner-color', preview.dataset.ownerColor || '#DABDFF');
+  preview.style.setProperty('--owner-text', preview.dataset.ownerText || '#191C1F');
+})();
+</script>
 
 {% endblock %}

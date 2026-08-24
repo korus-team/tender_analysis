@@ -9,11 +9,11 @@
 <a class="back-link" href="{{ back_url }}"><svg class="icon"><use href="#i-arrow-left"/></svg>{{ back_label }}</a>
 
 {% set owner = taken_by.get(t.tender_id) %}
-<div class="t-actions-top"{% if owner %} style="--owner-color:{{ owner.color }};--owner-text:{{ owner.text_color }}"{% endif %}>
+<div class="t-actions-top"{% if owner %} data-owner-color="{{ owner.color }}" data-owner-text="{{ owner.text_color }}"{% endif %}>
   {% if t.tender_id in my_fav_ids %}
     <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-label" type="submit"><svg class="icon"><use href="#i-close"/></svg>Убрать метку</button></form>
   {% else %}
-    <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-label" type="submit"><svg class="icon"><use href="#i-plus"/></svg>Добавить метку</button></form>
+    <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-label mobile-label-button" type="submit"><svg class="icon"><use href="#i-plus"/></svg><span class="desktop-only-label">Добавить метку</span><span class="mobile-only-label">метка</span></button></form>
   {% endif %}
   {% if owner %}<span class="ttag ttag-taken">Взято: {{ owner.username }}</span>{% endif %}
   <form class="favorite-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}" style="margin-left:auto">
@@ -70,7 +70,7 @@
   </div>
 
   <div class="tender-side-stack">
-    <div class="ibox b-risk">
+    <div class="ibox b-risk expandable-analysis-card" data-expand-peer=".b-why">
       <h3>Риски</h3>
       {% if t.document_analysis and t.document_analysis.risks %}
       <ul class="ilist risk">{% for r in t.document_analysis.risks %}<li><svg class="icon"><use href="#i-warn"/></svg><div>{% if r is mapping %}{{ r.text }}{{ source_link(r) }}{% else %}{{ r }}{% endif %}</div></li>{% endfor %}</ul>
@@ -78,6 +78,7 @@
       <ul class="ilist risk">{% for r in t.risks %}<li><svg class="icon"><use href="#i-warn"/></svg>{{ r }}</li>{% endfor %}</ul>
       {% else %}<p>Существенных рисков не отмечено.</p>{% endif %}
       {% if t.document_analysis %}<p class="analysis-meta">{{ t.document_analysis.openness }}</p>{% endif %}
+      <button type="button" class="ibox-expand-toggle" hidden>Развернуть <span class="expand-chevron" aria-hidden="true"></span></button>
     </div>
   </div>
 
@@ -123,7 +124,7 @@
         {% endif %}
       </div>
     </div>
-    <div class="ibox b-pit">
+    <div class="ibox b-pit expandable-analysis-card" data-expand-peer=".b-docs">
       <h3>Подводные камни на основе документов</h3>
       {% if t.document_analysis %}
       <ul class="ilist pit">{% for item in t.document_analysis.pitfalls %}<li><div>{% if item is mapping %}{{ item.text }}{{ source_link(item) }}{% else %}{{ item }}{% endif %}</div></li>{% endfor %}</ul>
@@ -131,6 +132,7 @@
       {% else %}
       <p style="color:var(--text-3)">Загрузите документацию: анализ выделит скрытые условия, жёсткие требования и признаки ограничения конкуренции.</p>
       {% endif %}
+      <button type="button" class="ibox-expand-toggle" hidden>Развернуть <span class="expand-chevron" aria-hidden="true"></span></button>
     </div>
   </div>
 </div>
@@ -240,4 +242,247 @@ document.getElementById('documentAnalysisForm')?.addEventListener('submit', func
   if (submit) { submit.disabled = true; submit.textContent = 'Анализируем…'; }
 });
 </script>
+
+<script>
+(function(){
+  var el = document.querySelector('.t-actions-top[data-owner-color]');
+  if(!el) return;
+  el.style.setProperty('--owner-color', el.dataset.ownerColor || '#DABDFF');
+  el.style.setProperty('--owner-text', el.dataset.ownerText || '#191C1F');
+})();
+</script>
+
+
+
+
+<style>
+/* ===== EXACT PAIRED HEIGHTS: WHY=RISKS, DOCS=PITFALLS ===== */
+:root{--tender-card-gap:24px}
+
+.tender-content-grid{
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+  gap:var(--tender-card-gap) !important;
+  align-items:start !important;
+}
+.tender-left-stack,.tender-side-stack{
+  min-width:0 !important;
+  margin:0 !important;
+}
+.tender-left-stack>.ibox,.tender-side-stack>.ibox{
+  width:100% !important;
+  margin:0 !important;
+}
+.tender-docs-row{
+  grid-column:1/-1 !important;
+  display:grid !important;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important;
+  gap:var(--tender-card-gap) !important;
+  align-items:start !important;
+  margin:0 !important;
+}
+.tender-docs-row>.ibox{
+  width:100% !important;
+  min-width:0 !important;
+  margin:0 !important;
+  box-sizing:border-box !important;
+}
+
+/* В свернутом виде JS задает Рискам ТОЧНУЮ высоту Почему подходит,
+   а Подводным камням — ТОЧНУЮ высоту Документов. */
+.expandable-analysis-card.pair-collapsed{
+  position:relative !important;
+  overflow:hidden !important;
+  box-sizing:border-box !important;
+}
+.expandable-analysis-card.pair-expanded{
+  height:auto !important;
+  max-height:none !important;
+  overflow:visible !important;
+}
+
+/* Контент режется так, чтобы "Развернуть" тоже находилось ВНУТРИ высоты peer-блока. */
+.pair-collapse-body{
+  overflow:hidden !important;
+}
+
+/* Только текст + аккуратная стрелка. */
+.ibox-expand-toggle{
+  display:inline-flex !important;
+  align-items:center !important;
+  gap:7px !important;
+  margin:8px 0 0 !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  color:#7C838B !important;
+  font:inherit !important;
+  font-size:14px !important;
+  font-weight:500 !important;
+  line-height:18px !important;
+  cursor:pointer !important;
+}
+.ibox-expand-toggle[hidden]{display:none !important}
+.expand-chevron{
+  display:inline-block;
+  width:7px;height:7px;
+  border-right:1.5px solid currentColor;
+  border-bottom:1.5px solid currentColor;
+  transform:rotate(45deg) translateY(-2px);
+}
+.pair-expanded .expand-chevron{
+  transform:rotate(225deg) translateY(-1px);
+}
+
+/* Документы сохраняют свое нормальное внутреннее расположение. */
+.b-docs.docs-card-fixed{
+  display:flex !important;
+  flex-direction:column !important;
+}
+.b-docs .docs-card-fixed__top{flex:1 1 auto}
+.b-docs .docs-card-fixed__bottom{margin-top:auto}
+
+/* Мобильную версию не ломаем фиксированными парными высотами. */
+@media(max-width:768px){
+  .tender-content-grid{
+    grid-template-columns:1fr !important;
+    gap:18px !important;
+  }
+  .tender-docs-row{
+    grid-column:auto !important;
+    grid-template-columns:1fr !important;
+    gap:18px !important;
+  }
+  .expandable-analysis-card.pair-collapsed{
+    height:auto !important;
+    max-height:none !important;
+    overflow:visible !important;
+  }
+  .pair-collapse-body{max-height:none !important}
+}
+</style>
+
+<script>
+(function(){
+  function wrapBody(card, toggle){
+    var body=card.querySelector('.pair-collapse-body');
+    if(body) return body;
+
+    body=document.createElement('div');
+    body.className='pair-collapse-body';
+
+    Array.from(card.childNodes).forEach(function(node){
+      if(node===toggle) return;
+      if(node.nodeType===1 && node.tagName==='H3') return;
+      body.appendChild(node);
+    });
+
+    var h=card.querySelector('h3');
+    if(h) h.insertAdjacentElement('afterend',body);
+    else card.insertBefore(body,toggle);
+    return body;
+  }
+
+  function naturalHeight(el){
+    var old={
+      height:el.style.height,
+      maxHeight:el.style.maxHeight,
+      minHeight:el.style.minHeight,
+      overflow:el.style.overflow
+    };
+    el.style.height='auto';
+    el.style.maxHeight='none';
+    el.style.minHeight='0';
+    el.style.overflow='visible';
+    var h=Math.ceil(el.scrollHeight);
+    el.style.height=old.height;
+    el.style.maxHeight=old.maxHeight;
+    el.style.minHeight=old.minHeight;
+    el.style.overflow=old.overflow;
+    return h;
+  }
+
+  function setup(card){
+    var peer=document.querySelector(card.dataset.expandPeer);
+    var toggle=card.querySelector('.ibox-expand-toggle');
+    if(!peer||!toggle) return;
+
+    var body=wrapBody(card,toggle);
+
+    function collapse(){
+      card.classList.remove('pair-expanded');
+      card.classList.add('pair-collapsed');
+
+      toggle.hidden=true;
+      body.style.maxHeight='none';
+      card.style.height='auto';
+
+      /* ВАЖНО: peer никогда не меняем. Берем именно его текущую естественную высоту. */
+      var peerH=Math.ceil(peer.getBoundingClientRect().height);
+      var ownNatural=naturalHeight(card);
+
+      /* Развернуть появляется ТОЛЬКО если собственный контент реально выше peer. */
+      var needsExpand=ownNatural > peerH + 2;
+
+      /* Свернутый блок всегда пиксель-в-пиксель равен своему peer. */
+      card.style.height=peerH+'px';
+
+      if(needsExpand){
+        toggle.hidden=false;
+        toggle.innerHTML='Развернуть <span class="expand-chevron" aria-hidden="true"></span>';
+
+        var cs=getComputedStyle(card);
+        var pt=parseFloat(cs.paddingTop)||0;
+        var pb=parseFloat(cs.paddingBottom)||0;
+        var heading=card.querySelector('h3');
+        var hh=heading ? heading.getBoundingClientRect().height : 0;
+        var hm=heading ? (parseFloat(getComputedStyle(heading).marginBottom)||0) : 0;
+
+        /* После показа измеряем toggle и резервируем ему место ВНУТРИ peerH. */
+        var th=Math.ceil(toggle.getBoundingClientRect().height);
+        var tm=parseFloat(getComputedStyle(toggle).marginTop)||0;
+        var available=peerH-pt-pb-hh-hm-th-tm;
+
+        body.style.maxHeight=Math.max(0,Math.floor(available))+'px';
+      }else{
+        toggle.hidden=true;
+        body.style.maxHeight='none';
+      }
+    }
+
+    if(!toggle.dataset.pairBound){
+      toggle.dataset.pairBound='1';
+      toggle.addEventListener('click',function(){
+        if(card.classList.contains('pair-expanded')){
+          collapse();
+        }else{
+          card.classList.remove('pair-collapsed');
+          card.classList.add('pair-expanded');
+          card.style.height='auto';
+          body.style.maxHeight='none';
+          toggle.hidden=false;
+          toggle.innerHTML='Свернуть <span class="expand-chevron" aria-hidden="true"></span>';
+        }
+      });
+    }
+
+    collapse();
+
+    var timer;
+    window.addEventListener('resize',function(){
+      clearTimeout(timer);
+      timer=setTimeout(function(){
+        if(!card.classList.contains('pair-expanded')) collapse();
+      },120);
+    });
+  }
+
+  function init(){
+    document.querySelectorAll('.expandable-analysis-card[data-expand-peer]').forEach(setup);
+  }
+  if(document.readyState==='loading') document.addEventListener('DOMContentLoaded',init);
+  else init();
+})();
+</script>
+
 {% endblock %}

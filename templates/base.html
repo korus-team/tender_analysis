@@ -2852,6 +2852,325 @@ h1.tender-page-title,
 }
 </style>
 
+
+<style>
+/* =================== MOBILE PHONE POLISH 24.08 =================== */
+.mobile-only-label{display:none}
+
+@media(max-width:768px){
+
+  /* 1. Все поиски: короткая компактная ширина, а не половина экрана */
+  .search-row{
+    grid-template-columns:auto auto !important;
+    justify-content:start !important;
+  }
+  .search-row .search-box{
+    width:154px !important;
+    max-width:154px !important;
+    flex:0 0 154px !important;
+    padding-left:12px !important;
+    padding-right:12px !important;
+  }
+  .search-row .search-box input{
+    width:92px !important;
+    min-width:0 !important;
+  }
+
+  /* Поиск в шапках: избранное / нерелевантное / другие страницы */
+  .topbar .search,
+  .topbar .topbar-right .search,
+  .search{
+    width:154px !important;
+    max-width:154px !important;
+    min-width:154px !important;
+    flex:0 0 154px !important;
+  }
+  .search form{
+    width:154px !important;
+    max-width:154px !important;
+  }
+  .search input{
+    min-width:0 !important;
+    width:104px !important;
+    font-size:16px !important;
+  }
+
+  /* Поиск на странице приоритетов тоже компактный */
+  .prio-search .search-box{
+    width:154px !important;
+    max-width:154px !important;
+    flex:0 0 154px !important;
+  }
+
+  /* 2. Главная: Журнал строго под Загрузить Excel */
+  .home-upload-actions{
+    display:flex !important;
+    flex-direction:column !important;
+    align-items:stretch !important;
+    gap:8px !important;
+    flex:0 0 auto !important;
+  }
+  .home-upload-actions > form,
+  .home-upload-actions > .btn-label{
+    width:100% !important;
+    margin:0 !important;
+  }
+  .home-upload-actions .btn-label{
+    min-height:44px !important;
+    height:44px !important;
+    padding:9px 13px !important;
+    justify-content:center !important;
+    font-size:16px !important;
+    white-space:nowrap !important;
+  }
+
+  .desktop-only-label{display:none !important}
+  .mobile-only-label{display:inline !important}
+
+  /* 3. Карточка тендера: на телефоне развертывания нет — виден полный текст */
+  .ibox-expand-toggle{
+    display:none !important;
+  }
+  .expandable-analysis-card,
+  .expandable-analysis-card.pair-collapsed,
+  .expandable-analysis-card.pair-expanded{
+    height:auto !important;
+    min-height:0 !important;
+    max-height:none !important;
+    overflow:visible !important;
+  }
+  .pair-collapse-body{
+    max-height:none !important;
+    overflow:visible !important;
+  }
+
+  /* 4. Метки и сердце всегда в одной горизонтали */
+  .t-actions-top{
+    display:flex !important;
+    flex-wrap:nowrap !important;
+    align-items:center !important;
+    gap:8px !important;
+    width:100% !important;
+    min-width:0 !important;
+  }
+  .t-actions-top > form,
+  .t-actions-top > .ttag{
+    margin-top:0 !important;
+    margin-bottom:0 !important;
+    flex:0 0 auto !important;
+  }
+  .t-actions-top .favorite-form{
+    margin-left:auto !important;
+    flex:0 0 auto !important;
+  }
+  .t-actions-top .tcard-heart{
+    width:42px !important;
+    height:42px !important;
+    padding:4px !important;
+  }
+  .t-actions-top .tcard-heart .icon{
+    width:30px !important;
+    height:30px !important;
+  }
+
+  /* "+ метка": плюс уже есть иконкой, поэтому текст становится просто "метка" */
+  .t-actions-top .mobile-label-button{
+    min-height:42px !important;
+    padding:8px 12px !important;
+    white-space:nowrap !important;
+  }
+  .t-actions-top .ttag-taken{
+    min-height:42px !important;
+    height:42px !important;
+    padding:0 12px !important;
+    white-space:nowrap !important;
+  }
+}
+</style>
+
+
+<style>
+/* =================== MOBILE CORRECTIONS 23:56 =================== */
+@media(max-width:768px){
+
+  /* HOME: вернуть поиск + фильтры на всю доступную ширину */
+  body .main .search-row{
+    display:grid !important;
+    grid-template-columns:minmax(0,1fr) auto !important;
+    width:100% !important;
+    gap:10px !important;
+    justify-content:stretch !important;
+  }
+  body .main .search-row .search-box{
+    width:100% !important;
+    max-width:none !important;
+    min-width:0 !important;
+    flex:1 1 auto !important;
+    padding-left:14px !important;
+    padding-right:14px !important;
+  }
+  body .main .search-row .search-box input{
+    width:100% !important;
+    min-width:0 !important;
+  }
+  body .main .search-row .btn-filter{
+    width:auto !important;
+    min-width:0 !important;
+    flex:0 0 auto !important;
+  }
+
+  /* НЕ главная: компактный поиск в верхней строке страниц */
+  .page-header .search,
+  .page-header .search form,
+  .topbar > .search,
+  .topbar > .search form,
+  .topbar-right > .search,
+  .topbar-right > .search form{
+    width:148px !important;
+    max-width:148px !important;
+    min-width:148px !important;
+    flex:0 0 148px !important;
+  }
+  .page-header .search input,
+  .topbar > .search input,
+  .topbar-right > .search input{
+    width:96px !important;
+    min-width:0 !important;
+    font-size:16px !important;
+  }
+
+  /* Приоритеты: весь контент по одной ширине */
+  .prio-wrap,
+  .prio-grid,
+  .prio-list,
+  .prio-add-card,
+  .prio-search-row{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+  }
+  .prio-grid{
+    display:block !important;
+  }
+  .prio-list{
+    display:flex !important;
+    flex-direction:column !important;
+    gap:12px !important;
+  }
+  .prio-item{
+    width:100% !important;
+    max-width:100% !important;
+    min-width:0 !important;
+    box-sizing:border-box !important;
+  }
+  .prio-search-row{
+    display:grid !important;
+    grid-template-columns:minmax(0,1fr) auto !important;
+    gap:10px !important;
+    align-items:center !important;
+  }
+  .prio-search-row .search-box{
+    width:100% !important;
+    max-width:none !important;
+    min-width:0 !important;
+  }
+  .prio-search-row .btn-outline,
+  .prio-search-row button{
+    white-space:nowrap !important;
+  }
+
+  /* Карточка тендера: на телефоне НИКОГДА не показывать Развернуть */
+  .ibox-expand-toggle,
+  .expandable-analysis-card .ibox-expand-toggle,
+  .b-risk .ibox-expand-toggle,
+  .b-pit .ibox-expand-toggle{
+    display:none !important;
+    visibility:hidden !important;
+  }
+  .expandable-analysis-card,
+  .expandable-analysis-card.pair-collapsed,
+  .expandable-analysis-card.pair-expanded,
+  .b-risk,
+  .b-pit{
+    height:auto !important;
+    min-height:0 !important;
+    max-height:none !important;
+    overflow:visible !important;
+  }
+  .pair-collapse-body,
+  .ibox-collapsible-content{
+    max-height:none !important;
+    overflow:visible !important;
+  }
+}
+</style>
+
+
+<style>
+/* ===== FINAL MOBILE SEARCH WIDTH ===== */
+@media(max-width:768px){
+  /* На всех страницах с поиском в шапке, кроме главной: компактно под слово Поиск */
+  .topbar .topbar-right .search,
+  .topbar .topbar-right .search form,
+  .topbar > .search,
+  .topbar > .search form,
+  .page-header .search,
+  .page-header .search form{
+    width:116px !important;
+    min-width:116px !important;
+    max-width:116px !important;
+    flex:0 0 116px !important;
+    box-sizing:border-box !important;
+  }
+  .topbar .topbar-right .search,
+  .topbar > .search,
+  .page-header .search{
+    padding-left:11px !important;
+    padding-right:11px !important;
+  }
+  .topbar .topbar-right .search form,
+  .topbar > .search form,
+  .page-header .search form{
+    gap:6px !important;
+  }
+  .topbar .topbar-right .search input,
+  .topbar > .search input,
+  .page-header .search input{
+    width:60px !important;
+    min-width:0 !important;
+    max-width:60px !important;
+    font-size:16px !important;
+    padding:0 !important;
+  }
+
+  /* Главная — поиск и Фильтры снова занимают всю ширину */
+  .home-search-row{
+    display:grid !important;
+    grid-template-columns:minmax(0,1fr) auto !important;
+    gap:10px !important;
+    width:100% !important;
+    justify-content:stretch !important;
+  }
+  .home-search-row .search-box{
+    width:100% !important;
+    min-width:0 !important;
+    max-width:none !important;
+    flex:1 1 auto !important;
+    padding:12px 14px !important;
+  }
+  .home-search-row .search-box input{
+    width:100% !important;
+    max-width:none !important;
+    min-width:0 !important;
+  }
+  .home-search-row .btn-filter{
+    width:auto !important;
+    min-width:0 !important;
+  }
+}
+</style>
+
 </head>
 <body>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
@@ -2980,7 +3299,7 @@ h1.tender-page-title,
         input.dataset.desktopPlaceholderV4 = input.getAttribute('placeholder') || '';
       }
       var original = input.dataset.desktopPlaceholderV4;
-      if(window.innerWidth <= 768 && /^Поиск\s+тендер/i.test(original)){
+      if(window.innerWidth <= 768 && /^Поиск/i.test(original)){
         input.setAttribute('placeholder','Поиск');
       }else if(window.innerWidth > 768){
         input.setAttribute('placeholder',original);

@@ -12,7 +12,7 @@
 {% if tenders %}
 {% for t in tenders %}
 {% set owner = taken_by.get(t.tender_id) %}
-<div class="tcard{% if owner %} tcard--taken{% endif %}"{% if owner %} style="--owner-color:{{ owner.color }};--owner-text:{{ owner.text_color }}"{% endif %}>
+<div class="tcard{% if owner %} tcard--taken{% endif %}"{% if owner %} data-owner-color="{{ owner.color }}" data-owner-text="{{ owner.text_color }}"{% endif %}>
   <div class="tcard-main">
     <div class="ttags">
       {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
@@ -41,4 +41,26 @@
 {% else %}
 <div class="empty">Нерелевантных тендеров нет.</div>
 {% endif %}
+
+<style>
+@media(max-width:768px){
+  .topbar .search,
+  .topbar .search form{
+    width:148px !important;
+    max-width:148px !important;
+    min-width:148px !important;
+  }
+  .topbar .search input{
+    width:96px !important;
+    min-width:0 !important;
+  }
+}
+</style>
+
+<script id="irrelevant-owner-color-init">
+document.querySelectorAll('.tcard[data-owner-color]').forEach(function(card){
+  card.style.setProperty('--owner-color', card.dataset.ownerColor || '#DABDFF');
+  card.style.setProperty('--owner-text', card.dataset.ownerText || '#000000');
+});
+</script>
 {% endblock %}

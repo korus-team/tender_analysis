@@ -3,12 +3,12 @@
 <style>.filters-panel--hidden{display:none}</style>
 <div class="topbar">
   <div><h1>Последняя загрузка: {{ last_upload }}</h1></div>
-  <div class="topbar-right">
+  <div class="topbar-right home-upload-actions">
     <form id="konturImportForm" method="post" action="{{ url_for('import_kontur') }}" enctype="multipart/form-data">
       <label class="btn-label" for="konturFile"><svg class="icon"><use href="#i-plus"/></svg>Загрузить Excel</label>
       <input id="konturFile" type="file" name="kontur_file" accept=".xlsx" hidden>
     </form>
-    <a class="btn-label" href="{{ url_for('upload_history') }}">Журнал загрузок</a>
+    <a class="btn-label upload-history-btn" href="{{ url_for('upload_history') }}"><span class="desktop-only-label">Журнал загрузок</span><span class="mobile-only-label">Журнал</span></a>
   </div>
 </div>
 
@@ -28,7 +28,7 @@
 </div>
 
 <form method="get" action="{{ url_for('home') }}" id="searchForm">
-  <div class="search-row">
+  <div class="search-row home-search-row">
     <label class="search-box"><svg class="icon"><use href="#i-search"/></svg><input name="q" value="{{ q }}" placeholder="Поиск по ключевым словам, номеру или заказчику..."></label>
     <button class="btn-filter" type="button" id="filtBtn"><svg class="icon"><use href="#i-filter"/></svg>Фильтры</button>
   </div>
@@ -60,7 +60,7 @@
 {% if tenders %}
 {% for t in tenders %}
 {% set owner = taken_by.get(t.tender_id) %}
-<div class="tcard{% if owner %} tcard--taken{% endif %}"{% if owner %} style="--owner-color:{{ owner.color }};--owner-text:{{ owner.text_color }}"{% endif %}>
+<div class="tcard{% if owner %} tcard--taken{% endif %}"{% if owner %} data-owner-color="{{ owner.color }}" data-owner-text="{{ owner.text_color }}"{% endif %}>
   <div class="tcard-main">
     <div class="ttags">
       {% if t.is_priority %}<span class="ttag ttag-priority"><svg class="icon"><use href="#i-star"/></svg>Приоритетная компания</span>{% endif %}
@@ -137,4 +137,12 @@
     });
   })();
 </script>
+
+<script>
+document.querySelectorAll('.tcard[data-owner-color]').forEach(function(card){
+  card.style.setProperty('--owner-color', card.dataset.ownerColor || '#DABDFF');
+  card.style.setProperty('--owner-text', card.dataset.ownerText || '#191C1F');
+});
+</script>
+
 {% endblock %}
