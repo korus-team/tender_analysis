@@ -452,6 +452,35 @@ def _upload_history_cutoff(now: datetime | None = None) -> str:
     return ((now or datetime.now()) - timedelta(days=30)).isoformat(timespec="seconds")
 
 
+def _record_upload_history(
+    user_id: int | None,
+    username: str,
+    uploaded_at: str,
+    filename: str,
+    sheet_name: str | None,
+) -> None:
+    """Записывает аудит загрузки, не меняя результат уже завершённого импорта."""
+    conn = None
+    try:
+        conn = storage.connect()
+        _prune_upload_history(conn)
+        conn.execute(
+            "INSERT INTO upload_history "
+            "(user_id, username, uploaded_at, filename, sheet_name) VALUES (?,?,?,?,?)",
+            (user_id, username, uploaded_at, filename, sheet_name),
+        )
+        conn.commit()
+    except Exception:  # noqa: BLE001
+        if conn is not None:
+            conn.rollback()
+        logger.exception(
+            "upload_history_record_failed user_id=%s filename=%s", user_id, filename
+        )
+    finally:
+        if conn is not None:
+            conn.close()
+
+
 def current_user():
     uid = session.get("user_id")
     if not uid:
@@ -1714,17 +1743,9 @@ def import_kontur():
                 notification_conn.close()
             if current_settings["n_new_email"] == "1":
                 notification_service.dispatch_email_outbox()
-            history_conn = storage.connect()
-            try:
-                _prune_upload_history(history_conn)
-                history_conn.execute(
-                    "INSERT INTO upload_history "
-                    "(user_id, username, uploaded_at, filename, sheet_name) VALUES (?,?,?,?,?)",
-                    (uploader_id, uploader_name, uploaded_at, filename, summary.get("sheet")),
-                )
-                history_conn.commit()
-            finally:
-                history_conn.close()
+            _record_upload_history(
+                uploader_id, uploader_name, uploaded_at, filename, summary.get("sheet")
+            )
             with _kontur_import_lock:
                 _kontur_import_jobs[job_id].update(status="complete", summary=summary)
             logger.info(
