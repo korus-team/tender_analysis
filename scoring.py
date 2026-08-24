@@ -255,7 +255,7 @@ def score_tender_llm(
     return ScoreResult(
         score=score,
         verdict=verdict,
-        reasons=[*rules_result.reasons, f"LLM: {evaluation.reason}"],
+        reasons=[*rules_result.reasons, f"Объяснение ИИ: {evaluation.reason}"],
         labels=[
             *rules_result.labels,
             "llm-scored",
