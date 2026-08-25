@@ -13,6 +13,7 @@
 </div>
 
 <form method="post" action="{{ url_for('profile') }}">
+{% include "_csrf.html" %}
 <div class="form-grid">
 
   <div class="form-card">

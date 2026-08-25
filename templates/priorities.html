@@ -11,14 +11,14 @@
         <div class="search-box"><svg class="icon"><use href="#i-search"/></svg><input name="q" value="{{ q }}" placeholder="Поиск по ИНН или названию..."></div>
         <button class="btn-filter" type="submit">Найти</button>
       </form>
-      <form method="post" action="{{ url_for('priorities_clear') }}" onsubmit="return confirm('Очистить весь список приоритетных компаний?')"><button class="btn-filter" type="submit"><span class="desktop-clear-label">Очистить все</span><span class="mobile-clear-label">Очистить</span></button></form>
+      <form method="post" action="{{ url_for('priorities_clear') }}" onsubmit="return confirm('Очистить весь список приоритетных компаний?')">{% include "_csrf.html" %}<button class="btn-filter" type="submit"><span class="desktop-clear-label">Очистить все</span><span class="mobile-clear-label">Очистить</span></button></form>
     </div>
     {% if companies %}
     {% for c in companies %}
     <div class="prio-row">
       <div class="prio-idx">{{ loop.index }}</div>
       <div class="prio-info"><div class="prio-name">{{ c.name }}</div>{% if c.inn %}<div class="prio-inn">ИНН {{ c.inn }}</div>{% endif %}</div>
-      <form method="post" action="{{ url_for('priorities_delete', cid=c.id) }}" onsubmit="return confirm('Удалить компанию из приоритетных?')"><button class="prio-del" type="submit" aria-label="Удалить"><svg class="icon"><use href="#i-close"/></svg></button></form>
+      <form method="post" action="{{ url_for('priorities_delete', cid=c.id) }}" onsubmit="return confirm('Удалить компанию из приоритетных?')">{% include "_csrf.html" %}<button class="prio-del" type="submit" aria-label="Удалить"><svg class="icon"><use href="#i-close"/></svg></button></form>
     </div>
     {% endfor %}
     {% else %}
@@ -31,6 +31,7 @@
       <div class="prio-add-title">Добавить компании</div>
     </div>
     <form method="post" action="{{ url_for('priorities_import') }}" enctype="multipart/form-data" class="prio-excel-form">
+      {% include "_csrf.html" %}
       <label class="prio-excel mobile-excel-tall"><input type="file" name="file" accept=".xlsx" hidden onchange="this.form.submit()"><svg class="icon"><use href="#i-plus"/></svg>Загрузить Excel</label>
     </form>
     <div class="prio-hint">В файле должны быть колонки «Название» и «ИНН». Они могут находиться в любом порядке среди других колонок — система найдёт их автоматически.</div>

@@ -1,6 +1,7 @@
 <div class="task-item {{ 'done' if t.done }}">
   <div class="task-check">
     <form method="post" action="{{ url_for('task_toggle', task_id=t.id) }}">
+      {% include "_csrf.html" %}
       <button type="submit" aria-label="Отметить выполненной"><svg class="icon"><use href="#i-check"/></svg></button>
     </form>
   </div>
@@ -14,6 +15,7 @@
   </div>
   <div class="task-del">
     <form method="post" action="{{ url_for('task_delete', task_id=t.id) }}" onsubmit="return confirm('Удалить задачу?')">
+      {% include "_csrf.html" %}
       <button type="submit" aria-label="Удалить">×</button>
     </form>
   </div>

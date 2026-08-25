@@ -14,16 +14,20 @@ import logging
 import math
 import os
 import re
+import secrets
 import tempfile
 import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta
 from functools import wraps
+from pathlib import Path
 from threading import Lock
 
 from flask import (Flask, Response, abort, flash, g, jsonify, redirect, render_template,
                    request, send_from_directory, session, url_for)
+from dotenv import load_dotenv
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
 
 import storage
@@ -40,17 +44,41 @@ from document_analysis import (DocumentAnalysisError, analyze as analyze_documen
 from services.document_requests import build_document_request
 from observability.logging_config import configure_logging
 from observability.user_actions import configure_user_action_logging
+from security_utils import load_or_create_secret_key
 
+load_dotenv()
 configure_logging()
 logger = logging.getLogger(__name__)
 user_action_logger = configure_user_action_logging()
 
 app = Flask(__name__)
-app.secret_key = "dar-tender-assistant-local"
-app.config["MAX_CONTENT_LENGTH"] = 20 * 1024 * 1024
+app.secret_key = load_or_create_secret_key(Path(__file__).resolve().parent)
+app.config.update(
+    MAX_CONTENT_LENGTH=20 * 1024 * 1024,
+    MAX_FORM_MEMORY_SIZE=2 * 1024 * 1024,
+    MAX_FORM_PARTS=200,
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=os.getenv("SESSION_COOKIE_SECURE", "0").strip().lower()
+    in {"1", "true", "yes", "on"},
+)
+if os.getenv("TRUST_PROXY", "0").strip().lower() in {"1", "true", "yes", "on"}:
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 DEFAULT_USER_COLOR = "#DABDFF"
 _USER_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_CSRF_SESSION_KEY = "_csrf_token"
+
+
+def _csrf_token() -> str:
+    token = session.get(_CSRF_SESSION_KEY)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        session[_CSRF_SESSION_KEY] = token
+    return token
+
+
+app.jinja_env.globals["csrf_token"] = _csrf_token
 
 
 def _log_user_action(action: str, tender_id: str) -> None:
@@ -773,6 +801,25 @@ def _require_login():
 
 
 @app.before_request
+def _protect_csrf():
+    """Отклоняет изменяющие запросы без токена текущей сессии."""
+    if request.method != "POST":
+        return None
+    expected = session.get(_CSRF_SESSION_KEY)
+    supplied = request.form.get("_csrf_token") or request.headers.get("X-CSRF-Token")
+    if expected and supplied and secrets.compare_digest(expected, supplied):
+        return None
+    logger.warning(
+        "csrf_rejected endpoint=%s remote_addr=%s",
+        request.endpoint,
+        request.remote_addr,
+    )
+    if request.headers.get("X-Requested-With") == "fetch" or request.accept_mimetypes.best == "application/json":
+        return jsonify(ok=False, error="Сессия формы устарела. Обновите страницу и повторите действие."), 400
+    abort(400, description="Сессия формы устарела. Обновите страницу и повторите действие.")
+
+
+@app.before_request
 def _start_request_timer():
     g.request_started_at = time.perf_counter()
 
@@ -786,6 +833,22 @@ def _log_request(response):
             "http_request method=%s path=%s status=%s duration_ms=%.1f",
             request.method, request.path, response.status_code, elapsed_ms,
         )
+    if request.endpoint != "static":
+        response.headers.setdefault("Cache-Control", "no-store")
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "DENY")
+    response.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; base-uri 'self'; object-src 'none'; frame-ancestors 'none'; "
+        "form-action 'self'; img-src 'self' data:; connect-src 'self'; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "script-src 'self' 'unsafe-inline'",
+    )
+    if request.is_secure:
+        response.headers.setdefault("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
     return response
 
 
@@ -880,6 +943,7 @@ def login():
         row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
         conn.close()
         if row and check_password_hash(row["password_hash"], password):
+            session.clear()
             session["user_id"] = row["id"]
             session["username"] = row["username"]
             session["has_avatar"] = bool(row["avatar_mime"])
@@ -911,6 +975,7 @@ def register():
         conn.commit()
         row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
         conn.close()
+        session.clear()
         session["user_id"] = row["id"]
         session["username"] = row["username"]
         session["has_avatar"] = bool(row["avatar_mime"])
@@ -919,7 +984,7 @@ def register():
     return render_template("register.html")
 
 
-@app.route("/logout")
+@app.route("/logout", methods=["POST"])
 def logout():
     session.clear()
     return redirect(url_for("login"))
@@ -1159,9 +1224,9 @@ def priorities_import():
     except priority_companies.PriorityCompanyImportError as exc:
         logger.warning("priority_companies_import_rejected error=%s", exc)
         flash(str(exc), "err")
-    except Exception as exc:  # noqa: BLE001
+    except Exception:  # noqa: BLE001
         logger.exception("priority_companies_import_failed")
-        flash(f"Не удалось импортировать компании: {exc}", "err")
+        flash("Не удалось импортировать компании. Проверьте файл и повторите попытку.", "err")
     finally:
         if conn is not None:
             conn.close()
@@ -1668,10 +1733,18 @@ def settings_test_email():
     """Проверяет локальные SMTP-настройки отдельным безопасным письмом."""
     recipient = (request.form.get("email") or _load_settings().get("email") or "").strip()
     try:
+        conn = storage.connect()
+        try:
+            notification_service.claim_test_email_slot(conn, int(session["user_id"]))
+        finally:
+            conn.close()
         notification_service.send_test_email(recipient)
         flash(f"Тестовое письмо отправлено на {recipient}")
-    except Exception as exc:  # noqa: BLE001
-        flash(f"Не удалось отправить тестовое письмо: {exc}", "err")
+    except notification_service.EmailRateLimitError as exc:
+        flash(str(exc), "err")
+    except Exception:  # noqa: BLE001
+        logger.exception("test_email_failed user_id=%s", session.get("user_id"))
+        flash("Не удалось отправить тестовое письмо. Проверьте адрес и SMTP-настройки.", "err")
     return redirect(url_for("settings"))
 
 
@@ -1866,9 +1939,16 @@ def import_kontur():
                 job_id, summary.get("parsed"), summary.get("kept"),
                 summary.get("new"), summary.get("updated"),
             )
-        except Exception as exc:  # noqa: BLE001
+        except KonturExcelError as exc:
             with _kontur_import_lock:
                 _kontur_import_jobs[job_id].update(status="error", error=str(exc))
+            logger.warning("kontur_import_rejected job_id=%s error=%s", job_id, exc)
+        except Exception:  # noqa: BLE001
+            with _kontur_import_lock:
+                _kontur_import_jobs[job_id].update(
+                    status="error",
+                    error="Не удалось обработать Excel-файл. Проверьте его формат и повторите попытку.",
+                )
             logger.exception("kontur_import_failed job_id=%s", job_id)
         finally:
             os.unlink(temp_path)
@@ -1998,4 +2078,4 @@ def notif_read():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, port=5000)
+    app.run(debug=False, port=5000)

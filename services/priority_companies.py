@@ -10,6 +10,8 @@ from zipfile import BadZipFile
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
+from security_utils import UnsafeArchiveError, validate_zip_archive
+
 
 MAX_ROWS = 100_000
 MAX_COLUMNS = 200
@@ -114,8 +116,13 @@ def _find_header(worksheet) -> tuple[int, int, int] | None:
 def import_xlsx(source, conn) -> dict[str, int | str]:
     """Импортирует компании с любого листа, где найдены колонки названия и ИНН."""
     try:
+        validate_zip_archive(
+            source,
+            max_files=10_000,
+            max_uncompressed_bytes=100 * 1024 * 1024,
+        )
         workbook = load_workbook(source, read_only=True, data_only=True)
-    except (BadZipFile, InvalidFileException, OSError, ValueError) as exc:
+    except (BadZipFile, InvalidFileException, OSError, ValueError, UnsafeArchiveError) as exc:
         raise PriorityCompanyImportError("Файл не удалось прочитать как Excel (.xlsx).") from exc
 
     try:

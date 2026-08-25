@@ -35,3 +35,4 @@ uploads/
 # Автоматически пополняемый локальный реестр проверенных крупных компаний.
 data/verified_large_companies.csv
 data/verified_large_companies.csv.tmp
+data/.flask_secret_key

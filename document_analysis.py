@@ -19,6 +19,8 @@ from xml.etree import ElementTree as ET
 from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 
+from security_utils import UnsafeArchiveError, validate_zip_archive
+
 load_dotenv()
 
 
@@ -27,6 +29,8 @@ MAX_FILES = 20
 MAX_FILE_BYTES = 5 * 1024 * 1024
 MAX_TOTAL_BYTES = 20 * 1024 * 1024
 MAX_TOTAL_CHARS = 160_000
+MAX_DOCX_UNCOMPRESSED_BYTES = 25 * 1024 * 1024
+MAX_PDF_PAGES = 200
 UPLOAD_ROOT = Path("uploads") / "document_analysis"
 
 
@@ -49,10 +53,15 @@ def _decode_text(raw: bytes) -> str:
 
 def _docx_text(raw: bytes) -> str:
     try:
+        validate_zip_archive(
+            BytesIO(raw),
+            max_files=2_000,
+            max_uncompressed_bytes=MAX_DOCX_UNCOMPRESSED_BYTES,
+        )
         with zipfile.ZipFile(BytesIO(raw)) as archive:
             xml = archive.read("word/document.xml")
         root = ET.fromstring(xml)
-    except (KeyError, ET.ParseError, zipfile.BadZipFile) as exc:
+    except (KeyError, ET.ParseError, zipfile.BadZipFile, UnsafeArchiveError) as exc:
         raise DocumentAnalysisError("Не удалось прочитать файл DOCX.") from exc
     ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
     paragraphs = []
@@ -72,7 +81,13 @@ def _pdf_text(raw: bytes) -> str:
         ) from exc
     try:
         reader = PdfReader(BytesIO(raw))
+        if reader.is_encrypted:
+            raise DocumentAnalysisError("Зашифрованные PDF-файлы не поддерживаются.")
+        if len(reader.pages) > MAX_PDF_PAGES:
+            raise DocumentAnalysisError(f"PDF содержит больше {MAX_PDF_PAGES} страниц.")
         return "\n".join(page.extract_text() or "" for page in reader.pages)
+    except DocumentAnalysisError:
+        raise
     except Exception as exc:  # pypdf имеет разные исключения для повреждённых PDF
         raise DocumentAnalysisError("Не удалось извлечь текст из PDF. Возможно, это скан без текстового слоя.") from exc
 
