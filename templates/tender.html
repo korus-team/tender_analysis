@@ -334,15 +334,29 @@ document.getElementById('documentAnalysisForm')?.addEventListener('submit', func
   transform:rotate(225deg) translateY(-1px);
 }
 
-/* Документы сохраняют свое нормальное внутреннее расположение. */
-.b-docs.docs-card-fixed{
+/* Документы сохраняют ЕСТЕСТВЕННУЮ компактную высоту — без пустого поля.
+   Подводные камни в свернутом виде будут равняться именно этой высоте. */
+.tender-docs-row{
+  align-items:start !important;
+}
+.tender-docs-row > .b-docs.docs-card-fixed{
+  height:auto !important;
+  min-height:0 !important;
+  max-height:none !important;
+  align-self:start !important;
   display:flex !important;
   flex-direction:column !important;
 }
-.b-docs .docs-card-fixed__top{flex:1 1 auto}
-.b-docs .docs-card-fixed__bottom{margin-top:auto}
+.b-docs .docs-card-fixed__top{
+  flex:0 0 auto !important;
+}
+.b-docs .docs-card-fixed__bottom{
+  flex:0 0 auto !important;
+  margin-top:18px !important;
+  padding-top:0 !important;
+}
 
-/* Мобильную версию не ломаем фиксированными парными высотами. */
+/* На телефоне никакого «Развернуть»: контент всегда показан целиком. */
 @media(max-width:768px){
   .tender-content-grid{
     grid-template-columns:1fr !important;
@@ -352,13 +366,31 @@ document.getElementById('documentAnalysisForm')?.addEventListener('submit', func
     grid-column:auto !important;
     grid-template-columns:1fr !important;
     gap:18px !important;
+    align-items:start !important;
   }
-  .expandable-analysis-card.pair-collapsed{
+  .expandable-analysis-card,
+  .expandable-analysis-card.pair-collapsed,
+  .expandable-analysis-card.pair-expanded{
     height:auto !important;
+    min-height:0 !important;
     max-height:none !important;
     overflow:visible !important;
   }
-  .pair-collapse-body{max-height:none !important}
+  .pair-collapse-body{
+    max-height:none !important;
+    overflow:visible !important;
+  }
+  .ibox-expand-toggle,
+  .b-risk .ibox-expand-toggle,
+  .b-pit .ibox-expand-toggle{
+    display:none !important;
+    visibility:hidden !important;
+  }
+  .tender-docs-row > .b-docs.docs-card-fixed{
+    height:auto !important;
+    min-height:0 !important;
+    max-height:none !important;
+  }
 }
 </style>
 
