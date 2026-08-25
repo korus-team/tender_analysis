@@ -159,7 +159,9 @@ def _encode(record: dict, key: str):
     return val
 
 
-def save_scored(conn: sqlite3.Connection, scored: list[dict]) -> dict:
+def save_scored(
+        conn: sqlite3.Connection, scored: list[dict], *, commit: bool = True,
+) -> dict:
     """
     Сохраняет список оценённых тендеров с дедупликацией.
     Возвращает сводку: что новое, что обновлено, где изменился дедлайн/цена.
@@ -212,7 +214,8 @@ def save_scored(conn: sqlite3.Connection, scored: list[dict]) -> dict:
             )
             updated_ids.append(tid)
 
-    conn.commit()
+    if commit:
+        conn.commit()
     return {
         "new": new_ids,
         "updated": updated_ids,

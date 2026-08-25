@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Iterable, Protocol
@@ -16,8 +17,11 @@ from .schemas import TenderScore
 
 DEFAULT_CONCURRENCY = 5
 MAX_TITLE_LENGTH = 2_000
+PROMPT_CACHE_KEY = "tender-scoring-positive-examples-v3"
+PROMPT_CACHE_OPTIONS = {"mode": "explicit"}
 
 load_dotenv()
+logger = logging.getLogger(__name__)
 
 
 class ResponsesAPI(Protocol):
@@ -82,13 +86,30 @@ class OpenAITenderScorer:
     def score(self, title: str) -> ScoringResult:
         """Вернуть оценку одного тендера"""
         clean_title = _validate_title(title)
+        return self._score_clean_title(clean_title)
 
+    def _score_clean_title(self, clean_title: str) -> ScoringResult:
         response = self.client.responses.parse(
             model=self.model,
             reasoning={"effort": "none"},
+            store=False,
+            prompt_cache_key=PROMPT_CACHE_KEY,
+            extra_body={"prompt_cache_options": PROMPT_CACHE_OPTIONS},
             input=[
-                {"role": "system", "content": self.system_prompt},
-                {"role": "user", "content": f"Данные тендера:\n{clean_title}"},
+                {
+                    "role": "developer",
+                    "content": [
+                        {
+                            "type": "input_text",
+                            "text": self.system_prompt,
+                            "prompt_cache_breakpoint": {"mode": "explicit"},
+                        }
+                    ],
+                },
+                {
+                    "role": "user",
+                    "content": f"Данные тендера:\n{clean_title}",
+                },
             ],
             text_format=TenderScore,
         )
@@ -98,13 +119,22 @@ class OpenAITenderScorer:
             raise RuntimeError("LLM API не вернул структурированную оценку.")
 
         usage = getattr(response, "usage", None)
-        return ScoringResult(
+        input_token_details = getattr(usage, "input_tokens_details", None)
+        cached_input_tokens = getattr(input_token_details, "cached_tokens", None)
+        result = ScoringResult(
             title=clean_title,
             evaluation=evaluation,
             model=self.model,
             input_tokens=getattr(usage, "input_tokens", None),
             output_tokens=getattr(usage, "output_tokens", None),
         )
+        logger.info(
+            "llm_tender_scored model=%s input_tokens=%s cached_input_tokens=%s "
+            "output_tokens=%s",
+            result.model, result.input_tokens, cached_input_tokens,
+            result.output_tokens,
+        )
+        return result
 
     def score_many(self, titles: Iterable[str]) -> list[ScoringResult]:
         """Параллельная оценка множества тендеров"""
@@ -117,7 +147,7 @@ class OpenAITenderScorer:
             max_workers=workers,
             thread_name_prefix="tender-scoring",
         ) as executor:
-            return list(executor.map(self.score, clean_titles))
+            return list(executor.map(self._score_clean_title, clean_titles))
 
 
 def _validate_title(title: str) -> str:
