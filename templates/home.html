@@ -5,6 +5,7 @@
   <div><h1>Последняя загрузка: {{ last_upload }}</h1></div>
   <div class="topbar-right home-upload-actions">
     <form id="konturImportForm" method="post" action="{{ url_for('import_kontur') }}" enctype="multipart/form-data">
+      {% include "_csrf.html" %}
       <label class="btn-label" for="konturFile"><svg class="icon"><use href="#i-plus"/></svg>Загрузить Excel</label>
       <input id="konturFile" type="file" name="kontur_file" accept=".xlsx" hidden>
     </form>
@@ -83,6 +84,7 @@
     </div>
   </div>
   <form class="tcard-heart-desktop" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
+    {% include "_csrf.html" %}
     <button class="tcard-heart {{ 'on' if t.tender_id in my_fav_ids }}" type="submit" aria-label="В избранное"><svg class="icon"><use href="#i-heart"/></svg></button>
   </form>
   <div class="tcard-mobile-meta" aria-hidden="true">
@@ -90,6 +92,7 @@
     {% if t.law %}<span class="tcard-mobile-law">{{ t.law }}</span>{% else %}<span class="tcard-mobile-law">—</span>{% endif %}
     <span class="tcard-mobile-deadline">{% if t.deadline_reminder %}{{ t.time_left_fmt }}{% elif t.deadline_date_fmt != '—' %}{{ t.deadline_date_fmt }}{% else %}—{% endif %}</span>
     <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
+      {% include "_csrf.html" %}
       <button class="tcard-heart {{ 'on' if t.tender_id in my_fav_ids }}" type="submit" aria-label="В избранное"><svg class="icon"><use href="#i-heart"/></svg></button>
     </form>
   </div>

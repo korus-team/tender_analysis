@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="csrf-token" content="{{ csrf_token() }}">
 <title>DAR — Ассистент для анализа тендеров</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -156,7 +157,7 @@ svg{display:block}
 .user-name{font-weight:600;font-size:15px;line-height:1.25}
 .user-role{color:var(--text-2);font-size:13px}
 .user-meta{min-width:0;display:flex;flex-direction:column;gap:1px}
-.user-logout{color:var(--text-3);font-size:13px;text-decoration:none;transition:color .15s ease}
+.user-logout{color:var(--text-3);font:inherit;font-size:13px;text-decoration:none;transition:color .15s ease;background:none;border:0;padding:0;cursor:pointer;text-align:left}
 .user-logout:hover{color:#C0392B}
 
 /* ============================== MAIN ============================== */
@@ -3222,7 +3223,7 @@ h1.tender-page-title,
       </a>
       <div class="user-meta">
         <div class="user-name">{{ current_user.username if current_user else 'Гость' }}</div>
-        <a class="user-logout" href="{{ url_for('logout') }}">Выйти</a>
+        <form method="post" action="{{ url_for('logout') }}">{% include "_csrf.html" %}<button class="user-logout" type="submit">Выйти</button></form>
       </div>
     </div>
     <button class="collapse-btn" id="collapseBtn" type="button" aria-label="Свернуть меню"><svg class="icon"><use href="#i-collapse"/></svg></button>

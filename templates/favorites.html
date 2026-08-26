@@ -36,12 +36,14 @@
     <div class="ttags" style="margin-top:9px">
       {% if (t.score or 0) >= 85 %}<span class="ttag ttag-match">Наиболее подходящее</span>{% endif %}
       <form method="post" action="{{ url_for('set_stage', tender_id=t.tender_id) }}">
+        {% include "_csrf.html" %}
         <select class="stage-select" name="value" onchange="this.form.submit()">
           <option value="">Задать этап…</option>
           {% for k, lbl in stage_labels.items() %}<option value="{{ k }}" {{ 'selected' if t.stage==k }}>{{ lbl }}</option>{% endfor %}
         </select>
       </form>
       <form class="fav-mobile-heart" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
+        {% include "_csrf.html" %}
         <button class="tcard-heart on" type="submit" aria-label="Убрать из избранного"><svg class="icon"><use href="#i-heart"/></svg></button>
       </form>
     </div>
@@ -51,6 +53,7 @@
     <div class="tcard-deadline">{% if t.expired %}<span>Размещение завершено</span>{% elif t.deadline_date_fmt != '—' %}<span>Подача заявок<br>до {{ t.deadline_date_fmt }}<br>{{ t.deadline_time_fmt }}</span>{% if t.deadline_reminder %}<b class="soon">{{ t.time_left_fmt }}</b>{% endif %}{% else %}<span>Срок подачи<br>не указан</span>{% endif %}</div>
   </div>
   <form class="fav-desktop-heart" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">
+    {% include "_csrf.html" %}
     <button class="tcard-heart on" type="submit" aria-label="Убрать из избранного"><svg class="icon"><use href="#i-heart"/></svg></button>
   </form>
 </div>

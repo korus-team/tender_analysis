@@ -16,6 +16,7 @@
   <!-- ==================== ПРОФИЛЬ ==================== -->
   <section class="settings-panel" data-settings-panel="profile">
     <form method="post" action="{{ url_for('settings_account') }}" enctype="multipart/form-data" id="settingsProfileForm">
+      {% include "_csrf.html" %}
       <div class="profile-grid">
 
         <div class="settings-card pink">
@@ -116,6 +117,7 @@ if(avatarFile){
     avatarFileName.textContent='Загрузка фото...';
     avatarFileName.style.color='';
     var data=new FormData();
+    data.append('_csrf_token',document.querySelector('meta[name="csrf-token"]').content);
     data.append('avatar',this.files[0]);
     try{
       var settingsPage=document.querySelector('.settings-page');
@@ -172,6 +174,7 @@ async function saveExtraContacts(){
   var hidden=document.getElementById('extraContactsValue');
   if(!hidden) return;
   var data=new FormData();
+  data.append('_csrf_token',document.querySelector('meta[name="csrf-token"]').content);
   data.append('extra_contacts',hidden.value||'');
   try{
     var settingsPage=document.querySelector('.settings-page');
@@ -231,6 +234,7 @@ if(userLabelColor){
   userLabelColor.addEventListener('change',async function(){
     var selected=this.value;
     var data=new FormData();
+    data.append('_csrf_token',document.querySelector('meta[name="csrf-token"]').content);
     data.append('label_color',selected);
     if(profileColorStatus) profileColorStatus.textContent='Сохраняем цвет…';
     try{

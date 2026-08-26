@@ -9,6 +9,7 @@
 
 <div class="task-add">
   <form method="post" action="{{ url_for('task_add') }}">
+    {% include "_csrf.html" %}
     <div class="f grow">
       <label>Что нужно сделать</label>
       <input type="text" name="title" value="{{ prefill_title }}" placeholder="Например: подготовить заявку и собрать документы" required>

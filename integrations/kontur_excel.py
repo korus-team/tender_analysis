@@ -16,6 +16,8 @@ from urllib.parse import parse_qs, unquote, urlparse
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
+from security_utils import UnsafeArchiveError, validate_zip_archive
+
 import company_size
 import directions
 from services import priority_companies
@@ -228,8 +230,13 @@ def _find_header_row(ws) -> int:
 def parse_kontur_xlsx(source) -> dict:
     """Читает путь или бинарный поток и возвращает нормализованные записи."""
     try:
+        validate_zip_archive(
+            source,
+            max_files=10_000,
+            max_uncompressed_bytes=100 * 1024 * 1024,
+        )
         workbook = load_workbook(source, read_only=False, data_only=True)
-    except (BadZipFile, InvalidFileException, OSError, ValueError) as exc:
+    except (BadZipFile, InvalidFileException, OSError, ValueError, UnsafeArchiveError) as exc:
         raise KonturExcelError("Файл не удалось прочитать как Excel (.xlsx).") from exc
 
     try:

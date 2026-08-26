@@ -17,10 +17,10 @@
     </div>
   </a>
   {% if t.tender_id in my_fav_ids %}
-    <form class="take-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-take mine" type="submit">В работе у меня</button></form>
+    <form class="take-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">{% include "_csrf.html" %}<button class="btn-take mine" type="submit">В работе у меня</button></form>
   {% elif owner %}
     <span class="btn-take taken" title="Взято: {{ owner.username }}">Занято</span>
   {% else %}
-    <form class="take-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-take" type="submit">Взять в работу</button></form>
+    <form class="take-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">{% include "_csrf.html" %}<button class="btn-take" type="submit">Взять в работу</button></form>
   {% endif %}
 </div>

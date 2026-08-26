@@ -3,6 +3,7 @@
 <h1>Вход</h1>
 <div class="sub">Войдите, чтобы продолжить работу с тендерами</div>
 <form method="post" action="{{ url_for('login') }}">
+  {% include "_csrf.html" %}
   <div class="auth-field"><label>Логин</label><input name="username" autocomplete="username" required autofocus></div>
   <div class="auth-field"><label>Пароль</label><input type="password" name="password" autocomplete="current-password" required></div>
   <button class="auth-btn" type="submit">Войти</button>

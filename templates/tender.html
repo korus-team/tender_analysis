@@ -11,12 +11,13 @@
 {% set owner = taken_by.get(t.tender_id) %}
 <div class="t-actions-top"{% if owner %} data-owner-color="{{ owner.color }}" data-owner-text="{{ owner.text_color }}"{% endif %}>
   {% if t.tender_id in my_fav_ids %}
-    <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-label" type="submit"><svg class="icon"><use href="#i-close"/></svg>Убрать метку</button></form>
+    <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">{% include "_csrf.html" %}<button class="btn-label" type="submit"><svg class="icon"><use href="#i-close"/></svg>Убрать метку</button></form>
   {% else %}
-    <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}"><button class="btn-label mobile-label-button" type="submit"><svg class="icon"><use href="#i-plus"/></svg><span class="desktop-only-label">Добавить метку</span><span class="mobile-only-label">метка</span></button></form>
+    <form method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}">{% include "_csrf.html" %}<button class="btn-label mobile-label-button" type="submit"><svg class="icon"><use href="#i-plus"/></svg><span class="desktop-only-label">Добавить метку</span><span class="mobile-only-label">метка</span></button></form>
   {% endif %}
   {% if owner %}<span class="ttag ttag-taken">Взято: {{ owner.username }}</span>{% endif %}
   <form class="favorite-form" method="post" action="{{ url_for('toggle_favorite', tender_id=t.tender_id) }}" style="margin-left:auto">
+    {% include "_csrf.html" %}
     <button class="tcard-heart {{ 'on' if t.tender_id in my_fav_ids }}" type="submit" aria-label="В избранное"><svg class="icon"><use href="#i-heart"/></svg></button>
   </form>
 </div>
@@ -143,17 +144,19 @@
   <div class="tender-status-actions" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <span style="color:var(--text-2);font-size:14px">Сейчас: <b>{{ 'профильный' if eff_rel else 'нерелевантный' }}</b>{% if override %} (вручную){% else %} (авто){% endif %}</span>
     {% if eff_rel %}
-      <form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}"><input type="hidden" name="value" value="irrelevant"><button class="btn-ghost" type="submit">Не наш профиль</button></form>
+      <form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}">{% include "_csrf.html" %}<input type="hidden" name="value" value="irrelevant"><button class="btn-ghost" type="submit">Не наш профиль</button></form>
     {% else %}
-      <form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}"><input type="hidden" name="value" value="relevant"><button class="btn-ghost" type="submit">Это наш профиль</button></form>
+      <form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}">{% include "_csrf.html" %}<input type="hidden" name="value" value="relevant"><button class="btn-ghost" type="submit">Это наш профиль</button></form>
     {% endif %}
-    {% if override %}<form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}"><input type="hidden" name="value" value="auto"><button class="btn-ghost" type="submit">Вернуть авто-оценку</button></form>{% endif %}
+    {% if override %}<form method="post" action="{{ url_for('set_relevance', tender_id=t.tender_id) }}">{% include "_csrf.html" %}<input type="hidden" name="value" value="auto"><button class="btn-ghost" type="submit">Вернуть авто-оценку</button></form>{% endif %}
     {% if not (ret and ret.startswith('/irrelevant')) %}
     <form method="post" action="{{ url_for('toggle_not_pursued', tender_id=t.tender_id) }}" style="margin-left:auto">
+      {% include "_csrf.html" %}
       <button class="btn-ghost" type="submit">{{ 'Вернуть в работу' if not_pursued else 'Отметить «не пошли»' }}</button>
     </form>
     {% endif %}
     <form method="post" action="{{ url_for('delete_tender_route', tender_id=t.tender_id) }}" onsubmit="return confirm('Удалить тендер из базы?')">
+      {% include "_csrf.html" %}
       <button class="btn-danger" type="submit">Удалить</button>
     </form>
   </div>
@@ -166,6 +169,7 @@
     <h2 id="documentAnalysisTitle">Анализ документов ИИ</h2>
     <p>Добавьте до 20 файлов: TXT, MD, CSV, DOCX или PDF. Файлы сохраняются в карточке тендера, чтобы открыть источник каждого совета.</p>
     <form id="documentAnalysisForm" method="post" action="{{ url_for('tender_analyze_documents', tender_id=t.tender_id) }}" enctype="multipart/form-data">
+      {% include "_csrf.html" %}
       <input type="hidden" name="ret" value="{{ request.args.get('ret', '') }}">
       <label class="file-drop" for="tenderDocuments">
         <input id="tenderDocuments" name="documents" type="file" multiple required accept=".txt,.md,.csv,.docx,.pdf" onchange="showDocumentNames(this)">

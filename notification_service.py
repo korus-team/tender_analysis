@@ -7,7 +7,8 @@ import html
 import os
 import smtplib
 import ssl
-from datetime import datetime
+from datetime import datetime, timedelta
+from email.headerregistry import Address
 from email.message import EmailMessage
 from pathlib import Path
 from urllib.parse import quote
@@ -17,6 +18,10 @@ import storage
 
 
 ENV_PATH = Path(__file__).with_name(".env")
+
+
+class EmailRateLimitError(RuntimeError):
+    """Слишком много ручных тестовых отправок."""
 
 
 def load_local_env(path: Path = ENV_PATH) -> dict[str, str]:
@@ -109,7 +114,46 @@ def ensure_schema(conn) -> None:
         "CREATE INDEX IF NOT EXISTS idx_email_outbox_status "
         "ON email_outbox(status, attempts, id)"
     )
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS email_test_events ("
+        "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+        "user_id INTEGER NOT NULL, "
+        "created_at TEXT NOT NULL)"
+    )
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_email_test_events_user_time "
+        "ON email_test_events(user_id, created_at)"
+    )
     conn.commit()
+
+
+def claim_test_email_slot(conn, user_id: int, *, limit: int = 3, minutes: int = 15) -> None:
+    """Атомарно учитывает тестовую отправку и ограничивает частоту запросов."""
+    ensure_schema(conn)
+    now = datetime.now()
+    cutoff = (now - timedelta(minutes=minutes)).isoformat(timespec="seconds")
+    cleanup_before = (now - timedelta(days=1)).isoformat(timespec="seconds")
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        conn.execute("DELETE FROM email_test_events WHERE created_at < ?", (cleanup_before,))
+        count = conn.execute(
+            "SELECT COUNT(*) FROM email_test_events WHERE user_id = ? AND created_at >= ?",
+            (user_id, cutoff),
+        ).fetchone()[0]
+        if count >= limit:
+            conn.rollback()
+            raise EmailRateLimitError(
+                f"Тестовое письмо можно отправить не более {limit} раз за {minutes} минут."
+            )
+        conn.execute(
+            "INSERT INTO email_test_events (user_id, created_at) VALUES (?, ?)",
+            (user_id, now.isoformat(timespec="seconds")),
+        )
+        conn.commit()
+    except Exception:
+        if conn.in_transaction:
+            conn.rollback()
+        raise
 
 
 def _tender_link(base_url: str, tender_id: str) -> str:
@@ -352,7 +396,19 @@ def dispatch_email_outbox(conn=None, *, only_id: int | None = None,
 
 def send_test_email(recipient: str, config: dict | None = None) -> None:
     recipient = (recipient or "").strip()
-    if not recipient or "@" not in recipient:
+    try:
+        parsed = Address(addr_spec=recipient)
+    except (TypeError, ValueError):
+        parsed = None
+    if (
+        not recipient
+        or len(recipient) > 254
+        or "\r" in recipient
+        or "\n" in recipient
+        or parsed is None
+        or not parsed.username
+        or not parsed.domain
+    ):
         raise ValueError("укажите корректный адрес электронной почты")
     _send_message(
         recipient,
